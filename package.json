@@ -1,0 +1,12 @@
+{
+  "name": "oc-dev-echo-bot",
+  "version": "0.1.0",
+  "description": "Telegram Echo Bot using Telegraf",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.0.0"
+  }
+}
