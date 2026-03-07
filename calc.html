@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Калькулятор — iOS-style</title>
+  <style>
+    :root{
+      --bg:#000;
+      --panel:#1c1c1c;
+      --display:#000;
+      --digit-bg:#505050; /* кнопки цифр — светло-серые в iOS они ближе к #333, but tuned */
+      --digit-text:#fff;
+      --func-bg:#2c2c2e; /* вспомогательные */
+      --op-bg:#ff9500; /* оранжевые операторы */
+      --op-text:#fff;
+      --radius: 28px;
+    }
+    html,body{height:100%;}
+    body{
+      margin:0; background:linear-gradient(180deg,#000 0%, #0b0b0b 100%);
+      font-family: -apple-system, "SF Pro Display", system-ui, Roboto, "Helvetica Neue", Arial;
+      display:flex; align-items:center; justify-content:center; padding:20px; color:#fff;
+    }
+    .calculator{
+      width:360px; max-width:95vw; background:var(--panel); border-radius:28px; padding:18px; box-sizing:border-box;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+    .display{
+      height:110px; display:flex; flex-direction:column; justify-content:flex-end; align-items:flex-end; padding:18px;
+      background:var(--display); border-radius:18px; margin-bottom:12px; box-sizing:border-box; color:#fff;
+    }
+    .small{font-size:14px; color:rgba(255,255,255,0.6); margin-bottom:6px;}
+    .mainValue{font-size:48px; line-height:1; font-weight:500; word-break:break-all;}
+
+    .keys{display:grid; grid-template-columns: repeat(4, 1fr); gap:12px;}
+    button{
+      height:72px; border-radius:22px; border:0; font-size:28px; font-weight:500; cursor:pointer; outline:0; box-shadow: 0 5px 0 rgba(0,0,0,0.4);
+    }
+    button:active{transform: translateY(2px); box-shadow: 0 3px 0 rgba(0,0,0,0.35);}    
+    .btn-digit{background:var(--digit-bg); color:var(--digit-text);}    
+    .btn-func{background:var(--func-bg); color:#fff;}
+    .btn-op{background:var(--op-bg); color:var(--op-text);}    
+    .btn-zero{grid-column: span 2; text-align:left; padding-left:30px;}
+
+    /* Adjust sizes for small screens */
+    @media (max-width:420px){
+      .calculator{width:320px}
+      button{height:64px; font-size:26px}
+      .mainValue{font-size:44px}
+    }
+  </style>
+</head>
+<body>
+  <div class="calculator" role="application" aria-label="Калькулятор">
+    <div class="display" aria-live="polite">
+      <div class="small" id="subDisplay">&nbsp;</div>
+      <div class="mainValue" id="display">0</div>
+    </div>
+
+    <div class="keys">
+      <button class="btn-func" data-action="clear">AC</button>
+      <button class="btn-func" data-action="negate">+/-</button>
+      <button class="btn-func" data-action="percent">%</button>
+      <button class="btn-op" data-action="operator" data-value="/">÷</button>
+
+      <button class="btn-digit" data-action="digit" data-value="7">7</button>
+      <button class="btn-digit" data-action="digit" data-value="8">8</button>
+      <button class="btn-digit" data-action="digit" data-value="9">9</button>
+      <button class="btn-op" data-action="operator" data-value="*">×</button>
+
+      <button class="btn-digit" data-action="digit" data-value="4">4</button>
+      <button class="btn-digit" data-action="digit" data-value="5">5</button>
+      <button class="btn-digit" data-action="digit" data-value="6">6</button>
+      <button class="btn-op" data-action="operator" data-value="-">−</button>
+
+      <button class="btn-digit" data-action="digit" data-value="1">1</button>
+      <button class="btn-digit" data-action="digit" data-value="2">2</button>
+      <button class="btn-digit" data-action="digit" data-value="3">3</button>
+      <button class="btn-op" data-action="operator" data-value="+">+</button>
+
+      <button class="btn-digit btn-zero" data-action="digit" data-value="0">0</button>
+      <button class="btn-digit" data-action="decimal">,</button>
+      <button class="btn-op" data-action="equals">=</button>
+    </div>
+  </div>
+
+  <script>
+    // Calculator logic (vanilla JS)
+    // Notes: display uses comma (',') as decimal separator per spec; internally we convert to '.' for calculations.
+
+    const displayEl = document.getElementById('display');
+    const subDisplayEl = document.getElementById('subDisplay');
+    const keys = document.querySelector('.keys');
+
+    let current = '0'; // string, may contain comma
+    let previous = null; // number
+    let operator = null; // '+','-','*','/' or null
+    let waitingForNew = false; // next digit starts new input
+    let error = false;
+
+    // For repeated '=' behavior
+    let lastOperator = null;
+    let lastOperand = null;
+
+    function formatForDisplay(str){
+      // Ensure we show comma as decimal separator and avoid scientific notation for reasonably sized numbers
+      if (error) return 'Error';
+      if (str === '' || str === null) return '0';
+      // Keep as is; ensure '.' -> ','
+      return String(str).replace('.', ',');
+    }
+
+    function updateDisplay(){
+      displayEl.textContent = formatForDisplay(current);
+      // show small sub display showing pending operation
+      if (previous !== null && operator){
+        subDisplayEl.textContent = (String(previous).replace('.', ',')) + ' ' + operator;
+      } else {
+        subDisplayEl.textContent = '\u00A0';
+      }
+    }
+
+    function clearAll(){
+      current = '0'; previous = null; operator = null; waitingForNew = false; error = false; lastOperator = null; lastOperand = null;
+      updateDisplay();
+    }
+
+    function inputDigit(d){
+      if (error) return;
+      if (waitingForNew){
+        current = d;
+        waitingForNew = false;
+      } else {
+        if (current === '0') current = d;
+        else current = current + d;
+      }
+      updateDisplay();
+    }
+
+    function inputDecimal(){
+      if (error) return;
+      if (waitingForNew){
+        current = '0,';
+        waitingForNew = false;
+        updateDisplay();
+        return;
+      }
+      if (!current.includes(',')){
+        current = current + ',';
+      }
+      updateDisplay();
+    }
+
+    function toggleSign(){
+      if (error) return;
+      if (current === '0' || current === '0,') return; // no-op
+      if (current.startsWith('-')) current = current.slice(1);
+      else current = '-' + current;
+      updateDisplay();
+    }
+
+    function applyPercent(){
+      if (error) return;
+      // Simple behavior: divide current input by 100
+      let val = parseFloat(current.replace(',', '.')) || 0;
+      val = val / 100;
+      current = String(val).replace('.', ',');
+      updateDisplay();
+    }
+
+    function compute(n1, op, n2){
+      // n1,n2 are numbers
+      if (op === '+') return n1 + n2;
+      if (op === '-') return n1 - n2;
+      if (op === '*') return n1 * n2;
+      if (op === '/'){
+        if (n2 === 0) {
+          // Division by zero — set error
+          error = true;
+          return null;
+        }
+        return n1 / n2;
+      }
+      return n2;
+    }
+
+    function handleOperator(nextOp){
+      if (error) return;
+      const inputValue = parseFloat(current.replace(',', '.'));
+
+      if (operator && !waitingForNew){
+        // perform previous op
+        const result = compute(previous, operator, inputValue);
+        if (error){ current = 'Error'; updateDisplay(); return; }
+        previous = result;
+        current = String(result).replace('.', ',');
+      } else if (!operator){
+        previous = inputValue;
+      }
+      operator = nextOp;
+      waitingForNew = true;
+      // after setting an operator, pressing equals should not immediately repeat; lastOperator cleared until an '=' occurs
+      lastOperator = null;
+      lastOperand = null;
+      updateDisplay();
+    }
+
+    function handleEquals(){
+      if (error) return;
+      let inputValue = parseFloat(current.replace(',', '.'));
+
+      if (operator){
+        // normal compute
+        const result = compute(previous, operator, inputValue);
+        if (error){ current = 'Error'; updateDisplay(); return; }
+        current = String(result).replace('.', ',');
+        // store last op for repeating
+        lastOperator = operator;
+        lastOperand = inputValue;
+        previous = result;
+        operator = null;
+        waitingForNew = true;
+        updateDisplay();
+      } else if (lastOperator){
+        // repeat last operation with lastOperand
+        const result = compute(parseFloat(current.replace(',', '.')), lastOperator, lastOperand);
+        if (error){ current = 'Error'; updateDisplay(); return; }
+        current = String(result).replace('.', ',');
+        previous = parseFloat(current.replace(',', '.'));
+        waitingForNew = true;
+        updateDisplay();
+      }
+    }
+
+    // Keyboard support (basic)
+    window.addEventListener('keydown', (e)=>{
+      if (e.key >= '0' && e.key <= '9'){
+        e.preventDefault(); inputDigit(e.key);
+      } else if (e.key === '.'){
+        e.preventDefault(); inputDecimal();
+      } else if (e.key === 'Enter' || e.key === '='){
+        e.preventDefault(); handleEquals();
+      } else if (e.key === '+' || e.key === '-' || e.key === '*' || e.key === '/'){
+        e.preventDefault(); handleOperator(e.key);
+      } else if (e.key === 'Backspace'){
+        e.preventDefault();
+        if (!waitingForNew && !error){
+          // remove last char from current
+          if (current.length > 1){ current = current.slice(0, -1); }
+          else current = '0';
+          updateDisplay();
+        }
+      }
+    });
+
+    // Click handling
+    keys.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const val = btn.dataset.value;
+
+      switch(action){
+        case 'digit': inputDigit(val); break;
+        case 'decimal': inputDecimal(); break;
+        case 'clear': clearAll(); break;
+        case 'negate': toggleSign(); break;
+        case 'percent': applyPercent(); break;
+        case 'operator': handleOperator(val); break;
+        case 'equals': handleEquals(); break;
+      }
+    });
+
+    // Initialize
+    clearAll();
+
+    // Edge-case verification notes (in-code comments):
+    // - Division by zero sets an error state and displays 'Error'. User must press AC to recover.
+    // - Repeated '=' repeats the last binary operation (e.g. 2 + 3 = -> 5, = -> 8, = -> 11). This follows iOS behavior.
+    // - +/- toggles sign of the current input; pressing it on 0 has no effect.
+    // - Percent converts current input to percentage (current/100).
+
+  </script>
+</body>
+</html>
