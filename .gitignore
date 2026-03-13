@@ -5,3 +5,6 @@ dist/
 .DS_Store
 dev.db
 dev.db-journal
+.env*
+calc.html
+qa.md
