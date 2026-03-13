@@ -23,7 +23,7 @@ export function getPrismaClient(): PrismaClient | null {
   return prisma;
 }
 
-export async function upsertUser(telegramId: bigint, firstName?: string, lastName?: string, username?: string) {
+export async function upsertUser(telegramId: string, firstName?: string, lastName?: string, username?: string) {
   const client = getPrismaClient();
 
   if (!client) {

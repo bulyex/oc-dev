@@ -8,8 +8,8 @@ datasource db {
 }
 
 model User {
-  id               BigInt   @id @default(autoincrement())
-  telegramId       BigInt   @unique
+  id               String   @default(uuid())
+  telegramId       String   @id
   firstName        String?
   lastName         String?
   username         String?
