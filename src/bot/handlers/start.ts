@@ -5,7 +5,7 @@ import { upsertUser } from '../../database/client.js';
 export function registerStartHandler(bot: Telegraf<Context>) {
   bot.command('start', async (ctx) => {
     try {
-      const telegramId = BigInt(ctx.from?.id || 0);
+      const telegramId = String(ctx.from?.id || '0');
 
       // Save user to database
       await upsertUser(
@@ -28,7 +28,7 @@ export function registerStartHandler(bot: Telegraf<Context>) {
     `.trim();
 
       await ctx.reply(welcomeMessage);
-      logger.info('Start command executed', { telegramId: Number(telegramId), firstName });
+      logger.info('Start command executed', { telegramId, firstName });
     } catch (error) {
       logger.error('Error in start handler:', error);
       try {
