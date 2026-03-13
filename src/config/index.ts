@@ -24,7 +24,7 @@ if (!parsed.success) {
 
 const config = parsed.data;
 
-const hasDatabase = !!config.databaseUrl;
+const hasDatabase = !!config.databaseUrl && config.databaseUrl.length > 0;
 
 export { config };
 export const isProduction = config.nodeEnv === 'production';
