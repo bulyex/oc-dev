@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.env
+.DS_Store
+dev.db
+dev.db-journal
+.env*
+calc.html
+qa.md
