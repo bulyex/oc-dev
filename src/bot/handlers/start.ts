@@ -1,13 +1,16 @@
 import { Context, Telegraf } from 'telegraf';
 import { logger } from '../../utils/logger.js';
 import { upsertUser } from '../../database/client.js';
+import { resetState, setLastMessage } from '../state/index.js';
+import { getOnboardingMessage } from '../onboarding/index.js';
 
 export function registerStartHandler(bot: Telegraf<Context>) {
   bot.command('start', async (ctx) => {
     try {
       const telegramId = String(ctx.from?.id || '0');
+      const userId = ctx.from?.id || 0;
 
-      // Save user to database
+      // Save user to database (if available)
       await upsertUser(
         telegramId,
         ctx.from?.first_name,
@@ -17,22 +20,25 @@ export function registerStartHandler(bot: Telegraf<Context>) {
 
       const firstName = ctx.from?.first_name || 'Пользователь';
 
-      const welcomeMessage = `
-👋 Привет, ${firstName}!
+      // Reset user state (always start from message 1)
+      resetState(userId);
 
-Я — Slowfire, твой бот для продуктивности по методике «12 недель в году».
+      // Get first onboarding message
+      const onboardingMessage = getOnboardingMessage(1);
 
-Сейчас я в режиме Phase 0 (прототип).
+      // Send onboarding message
+      const sentMessage = await ctx.reply(onboardingMessage.text, {
+        reply_markup: onboardingMessage.keyboard
+      });
 
-Просто напиши мне что-нибудь, и я повторю — эхо-бот для тестирования!
-    `.trim();
+      // Save state
+      setLastMessage(userId, 1, sentMessage.message_id);
 
-      await ctx.reply(welcomeMessage);
-      logger.info('Start command executed', { telegramId, firstName });
+      logger.info('Onboarding started', { telegramId, firstName, messageId: sentMessage.message_id });
     } catch (error) {
       logger.error('Error in start handler:', error);
       try {
-        await ctx.reply('Произошла ошибка при запуске бота.');
+        await ctx.reply('Произошла ошибка при запуске бота. Попробуйте /start снова.');
       } catch (replyError) {
         logger.error('Failed to send error reply:', replyError);
       }

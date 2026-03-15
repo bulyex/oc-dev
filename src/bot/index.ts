@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { registerStartHandler } from './handlers/start.js';
 import { registerTextHandler } from './handlers/text.js';
 import { registerNonTextHandler } from './handlers/nonText.js';
+import { registerCallbackHandler } from './handlers/callback.js';
 
 export function setupBotHandlers(bot: Telegraf<Context>) {
   // Global error handling to prevent polling loop crashes
@@ -22,6 +23,7 @@ export function setupBotHandlers(bot: Telegraf<Context>) {
   });
 
   registerStartHandler(bot);
+  registerCallbackHandler(bot);
   registerTextHandler(bot);
   registerNonTextHandler(bot);
 
