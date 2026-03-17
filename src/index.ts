@@ -3,6 +3,7 @@ import { logger } from './utils/logger.js';
 import { config } from './config/index.js';
 import { setupBotHandlers } from './bot/index.js';
 import { getPrismaClient, disconnectDatabase } from './database/client.js';
+import { initializeStateManager, shutdownStateManager } from './bot/state/index.js';
 
 // Initialize bot
 const bot = new Telegraf(config.telegramBotToken);
@@ -26,6 +27,9 @@ async function gracefulShutdown(signal: string) {
     // Stop receiving new updates
     bot.stop();
     logger.info('Bot stopped receiving updates');
+
+    // Shutdown state manager
+    await shutdownStateManager();
 
     // Disconnect database
     await disconnectDatabase();
@@ -53,6 +57,12 @@ process.on('unhandledRejection', (reason, promise) => {
 // Start bot
 async function start() {
   try {
+    // Initialize state manager FIRST (before bot starts)
+    await initializeStateManager(config.redisUrl);
+    logger.info('State manager initialized', { 
+      hasRedis: !!config.redisUrl 
+    });
+
     // Test database connection (if available)
     const prisma = getPrismaClient();
     if (prisma) {

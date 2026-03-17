@@ -9,7 +9,7 @@ export function registerNonTextHandler(bot: Telegraf<Context>) {
       const userId = ctx.from?.id || 0;
 
       // Get last message state
-      const state = getLastMessage(userId);
+      const state = await getLastMessage(userId);
 
       if (!state || !state.lastMessageType) {
         logger.info('Non-text message received but no onboarding state - suggesting /start', {

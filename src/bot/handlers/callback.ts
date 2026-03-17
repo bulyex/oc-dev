@@ -51,7 +51,7 @@ export function registerCallbackHandler(bot: Telegraf<Context>) {
       debounceMap.set(userId, now);
 
       // Validate callback (check if button is still valid)
-      const isValid = validateCallback(userId, parsed.messageType, parsed.timestamp);
+      const isValid = await validateCallback(userId, parsed.messageType, parsed.timestamp);
       if (!isValid) {
         logger.warn('Callback validation failed', { userId, messageType: parsed.messageType });
         await ctx.answerCbQuery('Кнопка устарела');
@@ -77,7 +77,7 @@ export function registerCallbackHandler(bot: Telegraf<Context>) {
       });
 
       // Update state
-      setLastMessage(userId, nextMessageType, sentMessage.message_id);
+      await setLastMessage(userId, nextMessageType, sentMessage.message_id);
 
       // Answer callback to remove "clock" icon
       await ctx.answerCbQuery();

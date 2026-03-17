@@ -19,7 +19,7 @@ export function registerTextHandler(bot: Telegraf<Context>) {
       }
 
       // Get last message state
-      const state = getLastMessage(userId);
+      const state = await getLastMessage(userId);
 
       if (!state || !state.lastMessageType) {
         logger.info('Text message received but no onboarding state - suggesting /start', {
@@ -37,7 +37,7 @@ export function registerTextHandler(bot: Telegraf<Context>) {
       });
 
       // Update state with new message ID
-      setLastMessage(userId, state.lastMessageType, sentMessage.message_id);
+      await setLastMessage(userId, state.lastMessageType, sentMessage.message_id);
 
       logger.info('Last onboarding message repeated', {
         userId,
