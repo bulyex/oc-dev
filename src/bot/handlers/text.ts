@@ -5,11 +5,16 @@ import {
   getLastDecisionMessage,
   setLastHelloMessage,
   setLastDecisionMessage,
-  getFSMState
+  getFSMState,
+  getState,
 } from '../state/index.js';
-import { UserFSMState } from '../state/types.js';
+import { UserFSMState, OnboardingSubstate } from '../state/types.js';
 import { getOnboardingMessage } from '../onboarding/index.js';
 import { getDecisionMessage } from '../decision/index.js';
+import {
+  processVisionMessage,
+  createVisionTimeoutKeyboard,
+} from '../onboarding/vision.js';
 
 export function registerTextHandler(bot: Telegraf<Context>) {
   bot.on('text', async (ctx) => {
@@ -29,7 +34,40 @@ export function registerTextHandler(bot: Telegraf<Context>) {
       // Get FSM state
       const fsmState = await getFSMState(userId);
 
-      // Handle based on FSM state
+      // Handle STATE_ONBOARDING
+      if (fsmState === UserFSMState.STATE_ONBOARDING) {
+        const state = await getState(userId);
+        
+        // Route by onboarding substate
+        if (state?.onboardingSubstate === OnboardingSubstate.VISION) {
+          const result = await processVisionMessage(userId, ctx.message.text);
+          
+          if (result.showTimeoutKeyboard) {
+            await ctx.reply(result.response, {
+              reply_markup: createVisionTimeoutKeyboard(),
+            });
+          } else {
+            await ctx.reply(result.response);
+          }
+          
+          logger.info('Vision message processed', {
+            userId,
+            isAccepted: result.isAccepted,
+            showTimeoutKeyboard: result.showTimeoutKeyboard,
+          });
+          return;
+        }
+        
+        // Future: handle GOALS, PLAN, TIME substates
+        logger.warn('Unknown onboarding substate', {
+          userId,
+          substate: state?.onboardingSubstate,
+        });
+        await ctx.reply('Произошла ошибка. Попробуйте /start снова.');
+        return;
+      }
+
+      // Handle STATE_DECISION
       if (fsmState === UserFSMState.STATE_DECISION) {
         // Repeat last DECISION message
         const lastDecision = await getLastDecisionMessage(userId);
@@ -41,7 +79,7 @@ export function registerTextHandler(bot: Telegraf<Context>) {
           logger.info('Last DECISION message repeated', {
             userId,
             messageType: lastDecision.decisionMessage,
-            messageId: sentMessage.message_id
+            messageId: sentMessage.message_id,
           });
           return;
         }

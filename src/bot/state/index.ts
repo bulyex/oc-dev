@@ -8,6 +8,8 @@ import {
   HelloMessageType,
   DecisionMessageType,
   OnboardingMessageType,
+  OnboardingSubstate,
+  ChatMessageHistory,
   BUTTON_TTL_MS
 } from './types.js';
 
@@ -439,6 +441,126 @@ export async function clearAllStates(): Promise<void> {
   }
 }
 
+// ============================================================
+// ONBOARDING STATE MANAGEMENT (STATE_ONBOARDING)
+// ============================================================
+
+/**
+ * Initialize STATE_ONBOARDING with Vision substate
+ */
+export async function initOnboardingVision(userId: number): Promise<void> {
+  const manager = getStateManager();
+  let state = await manager.get(userId);
+  
+  if (!state) {
+    state = {
+      fsmState: UserFSMState.STATE_ONBOARDING,
+      onboardingSubstate: OnboardingSubstate.VISION,
+      visionMessageCount: 0,
+      visionChatHistory: [],
+      lastTimestamp: Date.now(),
+    };
+  } else {
+    state = {
+      ...state,
+      fsmState: UserFSMState.STATE_ONBOARDING,
+      onboardingSubstate: OnboardingSubstate.VISION,
+      visionMessageCount: 0,
+      visionChatHistory: [],
+      lastTimestamp: Date.now(),
+    };
+  }
+
+  await manager.set(userId, state);
+  logger.info('Initialized ONBOARDING Vision substate', { userId });
+}
+
+/**
+ * Get full user state
+ */
+export async function getState(userId: number): Promise<UserState | null> {
+  const manager = getStateManager();
+  return manager.get(userId);
+}
+
+/**
+ * Increment Vision message count
+ */
+export async function incrementVisionMessageCount(userId: number): Promise<number> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  
+  if (!state) return 0;
+  
+  const newCount = (state.visionMessageCount || 0) + 1;
+  
+  state.visionMessageCount = newCount;
+  state.lastTimestamp = Date.now();
+  
+  await manager.set(userId, state);
+  return newCount;
+}
+
+/**
+ * Add message to Vision chat history
+ */
+export async function addVisionChatMessage(
+  userId: number,
+  role: 'user' | 'assistant',
+  content: string
+): Promise<void> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  
+  if (!state) return;
+  
+  if (!state.visionChatHistory) {
+    state.visionChatHistory = [];
+  }
+  
+  state.visionChatHistory.push({ role, content });
+  state.lastTimestamp = Date.now();
+  
+  await manager.set(userId, state);
+}
+
+/**
+ * Save accepted Vision
+ */
+export async function saveVision(userId: number, vision: string): Promise<void> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  
+  if (!state) return;
+  
+  state.vision = vision;
+  // Note: onboardingSubstate will change to GOALS in future task
+  state.lastTimestamp = Date.now();
+  
+  await manager.set(userId, state);
+  logger.info('Vision saved', { userId, visionLength: vision.length });
+}
+
+/**
+ * Get Vision state info
+ */
+export async function getVisionState(userId: number): Promise<{
+  messageCount: number;
+  chatHistory: ChatMessageHistory[];
+} | null> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  
+  if (!state || state.fsmState !== UserFSMState.STATE_ONBOARDING) {
+    return null;
+  }
+  
+  return {
+    messageCount: state.visionMessageCount || 0,
+    chatHistory: state.visionChatHistory || [],
+  };
+}
+
 // Re-export types
-export { OnboardingMessageType, UserFSMState, HelloMessageType, DecisionMessageType } from './types.js';
-export type { UserState } from './types.js';
+export { UserFSMState, OnboardingSubstate } from './types.js';
+export type { OnboardingMessageType, HelloMessageType, DecisionMessageType, UserState, ChatMessageHistory } from './types.js';
