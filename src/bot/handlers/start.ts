@@ -1,7 +1,8 @@
 import { Context, Telegraf } from 'telegraf';
 import { logger } from '../../utils/logger.js';
 import { upsertUser } from '../../database/client.js';
-import { resetState, setLastMessage } from '../state/index.js';
+import { resetState, setLastHelloMessage, setFSMState } from '../state/index.js';
+import { UserFSMState } from '../state/types.js';
 import { getOnboardingMessage } from '../onboarding/index.js';
 
 export function registerStartHandler(bot: Telegraf<Context>) {
@@ -23,6 +24,9 @@ export function registerStartHandler(bot: Telegraf<Context>) {
       // Reset user state (always start from message 1)
       await resetState(userId);
 
+      // Set FSM state to STATE_HELLO
+      await setFSMState(userId, UserFSMState.STATE_HELLO);
+
       // Get first onboarding message
       const onboardingMessage = getOnboardingMessage(1);
 
@@ -32,9 +36,9 @@ export function registerStartHandler(bot: Telegraf<Context>) {
       });
 
       // Save state
-      await setLastMessage(userId, 1, sentMessage.message_id);
+      await setLastHelloMessage(userId, 1, sentMessage.message_id);
 
-      logger.info('Onboarding started', { telegramId, firstName, messageId: sentMessage.message_id });
+      logger.info('Onboarding started', { telegramId, firstName, messageId: sentMessage.message_id, fsmState: UserFSMState.STATE_HELLO });
     } catch (error) {
       logger.error('Error in start handler:', error);
       try {
