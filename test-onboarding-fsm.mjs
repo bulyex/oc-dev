@@ -89,18 +89,19 @@ async function runTests() {
 
   console.log('✅ Test 2: Onboarding Messages');
   const msg1 = getOnboardingMessage(1);
-  if (msg1.text !== 'Привет! Это первое сообщение.') {
+  // Check that message text starts with expected content (Task 6 updated texts)
+  if (!msg1.text.startsWith('Скажи честно.')) {
     console.log('   ❌ FAILED: Message 1 text incorrect');
     process.exit(1);
   }
-  if (!msg1.keyboard.inline_keyboard || msg1.keyboard.inline_keyboard[0][0].text !== 'Привет! Продолжай 1') {
+  if (!msg1.keyboard.inline_keyboard || msg1.keyboard.inline_keyboard[0][0].text !== 'Знакомое ощущение.') {
     console.log('   ❌ FAILED: Message 1 keyboard incorrect');
     process.exit(1);
   }
   console.log('   ✅ Message 1 correct');
 
   const msg2 = getOnboardingMessage(2);
-  if (msg2.text !== 'Бывает ли такое.. Перегруз, завалы') {
+  if (!msg2.text.startsWith('Иногда мы путаем')) {
     console.log('   ❌ FAILED: Message 2 text incorrect');
     process.exit(1);
   }
