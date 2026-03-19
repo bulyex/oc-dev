@@ -2,7 +2,14 @@ import { logger } from '../../utils/logger.js';
 import { StateManager } from './manager.js';
 import { RedisStateManager } from './redis.js';
 import { InMemoryStateManager } from './memory.js';
-import { UserState, OnboardingMessageType, BUTTON_TTL_MS } from './types.js';
+import {
+  UserState,
+  UserFSMState,
+  HelloMessageType,
+  DecisionMessageType,
+  OnboardingMessageType,
+  BUTTON_TTL_MS
+} from './types.js';
 
 // Global state manager instance
 let stateManager: StateManager | null = null;
@@ -64,45 +71,205 @@ export async function shutdownStateManager(): Promise<void> {
 }
 
 // ============================================================
-// LEGACY EXPORTS (for backward compatibility with handlers)
-// These will be removed in future refactoring
+// FSM STATE MANAGEMENT
 // ============================================================
 
 /**
- * Set last message info for a user
- * @deprecated Use getStateManager().set() instead
+ * Set user FSM state
  */
-export async function setLastMessage(
+export async function setFSMState(
   userId: number,
-  messageType: OnboardingMessageType,
+  fsmState: UserFSMState
+): Promise<void> {
+  const manager = getStateManager();
+  let state = await manager.get(userId);
+  
+  if (!state) {
+    state = {
+      fsmState,
+      lastTimestamp: Date.now()
+    };
+  } else {
+    state = {
+      ...state,
+      fsmState,
+      lastTimestamp: Date.now()
+    };
+  }
+  
+  await manager.set(userId, state);
+  logger.debug('FSM state set', { userId, fsmState });
+}
+
+/**
+ * Get user FSM state
+ */
+export async function getFSMState(userId: number): Promise<UserFSMState | null> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  
+  if (!state) return null;
+  
+  // Migration: convert legacy state to new format
+  if (!state.fsmState && state.lastMessageType) {
+    return UserFSMState.STATE_HELLO;
+  }
+  
+  return state.fsmState || null;
+}
+
+/**
+ * Transition from HELLO to DECISION
+ */
+export async function transitionHelloToDecision(userId: number): Promise<void> {
+  await setFSMState(userId, UserFSMState.STATE_DECISION);
+  
+  // Reset decision message counter
+  const manager = getStateManager();
+  let state = await manager.get(userId);
+  if (state) {
+    state.decisionMessage = undefined;
+    await manager.set(userId, state);
+  }
+  
+  logger.info('Transitioned to DECISION state', { userId });
+}
+
+/**
+ * Transition from DECISION to ONBOARDING
+ */
+export async function transitionDecisionToOnboarding(userId: number): Promise<void> {
+  await setFSMState(userId, UserFSMState.STATE_ONBOARDING);
+  logger.info('Transitioned to ONBOARDING state', { userId });
+}
+
+/**
+ * Set last decision message for a user
+ */
+export async function setLastDecisionMessage(
+  userId: number,
+  messageType: DecisionMessageType,
   messageId?: number
 ): Promise<void> {
   const manager = getStateManager();
-  
-  // Get existing state or create new
   let state = await manager.get(userId);
+  
   if (!state) {
     state = {
-      lastMessageType: messageType,
+      fsmState: UserFSMState.STATE_DECISION,
+      decisionMessage: messageType,
       lastMessageId: messageId,
       lastTimestamp: Date.now()
     };
   } else {
     state = {
       ...state,
-      lastMessageType: messageType,
+      fsmState: UserFSMState.STATE_DECISION,
+      decisionMessage: messageType,
       lastMessageId: messageId,
       lastTimestamp: Date.now()
     };
   }
 
   await manager.set(userId, state);
-  logger.debug('User state updated', { userId, messageType, messageId });
+  logger.debug('Decision message set', { userId, messageType, messageId });
+}
+
+/**
+ * Get last decision message for a user
+ */
+export async function getLastDecisionMessage(userId: number): Promise<{
+  decisionMessage: DecisionMessageType;
+  lastMessageId?: number;
+} | null> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  
+  if (!state || !state.decisionMessage) return null;
+  
+  return {
+    decisionMessage: state.decisionMessage,
+    lastMessageId: state.lastMessageId
+  };
+}
+
+/**
+ * Set last hello message for a user
+ */
+export async function setLastHelloMessage(
+  userId: number,
+  messageType: HelloMessageType,
+  messageId?: number
+): Promise<void> {
+  const manager = getStateManager();
+  let state = await manager.get(userId);
+  
+  if (!state) {
+    state = {
+      fsmState: UserFSMState.STATE_HELLO,
+      helloMessage: messageType,
+      lastMessageId: messageId,
+      lastTimestamp: Date.now()
+    };
+  } else {
+    state = {
+      ...state,
+      fsmState: UserFSMState.STATE_HELLO,
+      helloMessage: messageType,
+      lastMessageId: messageId,
+      lastTimestamp: Date.now()
+    };
+    // Update legacy field for backward compatibility
+    state.lastMessageType = messageType;
+  }
+
+  await manager.set(userId, state);
+  logger.debug('Hello message set', { userId, messageType, messageId });
+}
+
+/**
+ * Get last hello message for a user
+ */
+export async function getLastHelloMessage(userId: number): Promise<{
+  helloMessage: HelloMessageType;
+  lastMessageId?: number;
+} | null> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  
+  if (!state) return null;
+  
+  // Try new field first, then fall back to legacy
+  const helloMessage = state.helloMessage || state.lastMessageType;
+  
+  if (!helloMessage) return null;
+  
+  return {
+    helloMessage: helloMessage as HelloMessageType,
+    lastMessageId: state.lastMessageId
+  };
+}
+
+// ============================================================
+// LEGACY EXPORTS (for backward compatibility with handlers)
+// These will be removed in future refactoring
+// ============================================================
+
+/**
+ * Set last message info for a user
+ * @deprecated Use setLastHelloMessage() instead
+ */
+export async function setLastMessage(
+  userId: number,
+  messageType: OnboardingMessageType,
+  messageId?: number
+): Promise<void> {
+  await setLastHelloMessage(userId, messageType, messageId);
 }
 
 /**
  * Get last message info for a user
- * @deprecated Use getStateManager().get() instead
+ * @deprecated Use getLastHelloMessage() instead
  */
 export async function getLastMessage(userId: number): Promise<UserState | undefined> {
   const manager = getStateManager();
@@ -112,11 +279,14 @@ export async function getLastMessage(userId: number): Promise<UserState | undefi
 
 /**
  * Reset user state (used for /start)
- * @deprecated Use getStateManager().reset() instead
  */
 export async function resetState(userId: number): Promise<void> {
   const manager = getStateManager();
   await manager.reset(userId);
+  
+  // Set initial FSM state
+  await setFSMState(userId, UserFSMState.STATE_HELLO);
+  
   logger.debug('User state reset', { userId });
 }
 
@@ -139,11 +309,19 @@ export async function validateCallback(
     return false;
   }
 
+  // Get current message type (try new field first, then legacy)
+  const currentMessageType = state.helloMessage || state.lastMessageType;
+  
+  if (!currentMessageType) {
+    logger.warn('Callback validation failed - no message type in state', { userId });
+    return false;
+  }
+
   // Check if callback message type matches current state
-  if (state.lastMessageType !== callbackMessageType) {
+  if (currentMessageType !== callbackMessageType) {
     logger.warn('Callback validation failed - message type mismatch', {
       userId,
-      currentType: state.lastMessageType,
+      currentType: currentMessageType,
       callbackType: callbackMessageType
     });
     return false;
@@ -175,11 +353,78 @@ export async function validateCallback(
 }
 
 /**
+ * Validate decision callback data
+ */
+export async function validateDecisionCallback(
+  userId: number,
+  callbackMessageType: DecisionMessageType,
+  callbackTimestamp: number
+): Promise<boolean> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+
+  // No state found - invalid
+  if (!state) {
+    logger.warn('Decision callback validation failed - no state found', { userId });
+    return false;
+  }
+
+  // Check FSM state
+  if (state.fsmState !== UserFSMState.STATE_DECISION) {
+    logger.warn('Decision callback validation failed - wrong FSM state', {
+      userId,
+      fsmState: state.fsmState
+    });
+    return false;
+  }
+
+  // Get current decision message type
+  const currentMessageType = state.decisionMessage;
+  
+  if (!currentMessageType) {
+    logger.warn('Decision callback validation failed - no decision message in state', { userId });
+    return false;
+  }
+
+  // Check if callback message type matches current state
+  if (currentMessageType !== callbackMessageType) {
+    logger.warn('Decision callback validation failed - message type mismatch', {
+      userId,
+      currentType: currentMessageType,
+      callbackType: callbackMessageType
+    });
+    return false;
+  }
+
+  // Check if callback is expired
+  const now = Date.now();
+  if (now - callbackTimestamp > BUTTON_TTL_MS) {
+    logger.warn('Decision callback validation failed - expired', {
+      userId,
+      callbackTimestamp,
+      now
+    });
+    return false;
+  }
+
+  logger.debug('Decision callback validated successfully', { userId, messageType: callbackMessageType });
+  return true;
+}
+
+/**
  * Get next message type in the sequence
  */
 export function getNextMessageType(current: OnboardingMessageType): OnboardingMessageType | null {
   const next = current + 1;
   return next <= 5 ? (next as OnboardingMessageType) : null;
+}
+
+/**
+ * Get next decision message type
+ */
+export function getNextDecisionMessageType(current: DecisionMessageType): DecisionMessageType | null {
+  const next = current + 1;
+  return next <= 2 ? (next as DecisionMessageType) : null;
 }
 
 /**
@@ -195,5 +440,5 @@ export async function clearAllStates(): Promise<void> {
 }
 
 // Re-export types
-export { OnboardingMessageType } from './types.js';
+export { OnboardingMessageType, UserFSMState, HelloMessageType, DecisionMessageType } from './types.js';
 export type { UserState } from './types.js';

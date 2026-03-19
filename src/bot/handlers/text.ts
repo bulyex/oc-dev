@@ -1,7 +1,15 @@
 import { Context, Telegraf } from 'telegraf';
 import { logger } from '../../utils/logger.js';
-import { getLastMessage, setLastMessage } from '../state/index.js';
+import {
+  getLastHelloMessage,
+  getLastDecisionMessage,
+  setLastHelloMessage,
+  setLastDecisionMessage,
+  getFSMState
+} from '../state/index.js';
+import { UserFSMState } from '../state/types.js';
 import { getOnboardingMessage } from '../onboarding/index.js';
+import { getDecisionMessage } from '../decision/index.js';
 
 export function registerTextHandler(bot: Telegraf<Context>) {
   bot.on('text', async (ctx) => {
@@ -18,10 +26,31 @@ export function registerTextHandler(bot: Telegraf<Context>) {
         return;
       }
 
-      // Get last message state
-      const state = await getLastMessage(userId);
+      // Get FSM state
+      const fsmState = await getFSMState(userId);
 
-      if (!state || !state.lastMessageType) {
+      // Handle based on FSM state
+      if (fsmState === UserFSMState.STATE_DECISION) {
+        // Repeat last DECISION message
+        const lastDecision = await getLastDecisionMessage(userId);
+        if (lastDecision) {
+          const message = getDecisionMessage(lastDecision.decisionMessage);
+          const sentMessage = await ctx.reply(message.text, { reply_markup: message.keyboard });
+          await setLastDecisionMessage(userId, lastDecision.decisionMessage, sentMessage.message_id);
+          
+          logger.info('Last DECISION message repeated', {
+            userId,
+            messageType: lastDecision.decisionMessage,
+            messageId: sentMessage.message_id
+          });
+          return;
+        }
+      }
+
+      // STATE_HELLO or legacy state - repeat last onboarding message
+      const lastHello = await getLastHelloMessage(userId);
+
+      if (!lastHello || !lastHello.helloMessage) {
         logger.info('Text message received but no onboarding state - suggesting /start', {
           userId
         });
@@ -30,18 +59,18 @@ export function registerTextHandler(bot: Telegraf<Context>) {
       }
 
       // Repeat last onboarding message
-      const onboardingMessage = getOnboardingMessage(state.lastMessageType);
+      const onboardingMessage = getOnboardingMessage(lastHello.helloMessage);
 
       const sentMessage = await ctx.reply(onboardingMessage.text, {
         reply_markup: onboardingMessage.keyboard
       });
 
       // Update state with new message ID
-      await setLastMessage(userId, state.lastMessageType, sentMessage.message_id);
+      await setLastHelloMessage(userId, lastHello.helloMessage, sentMessage.message_id);
 
       logger.info('Last onboarding message repeated', {
         userId,
-        messageType: state.lastMessageType,
+        messageType: lastHello.helloMessage,
         messageId: sentMessage.message_id
       });
     } catch (error) {
