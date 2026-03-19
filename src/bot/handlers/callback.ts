@@ -8,7 +8,8 @@ import {
   getFSMState,
   transitionHelloToDecision,
   transitionDecisionToOnboarding,
-  setLastDecisionMessage
+  setLastDecisionMessage,
+  initOnboardingVision,
 } from '../state/index.js';
 import { UserFSMState } from '../state/types.js';
 import {
@@ -19,6 +20,7 @@ import {
   parseDecisionCallbackData,
   getDecisionMessage
 } from '../decision/index.js';
+import { VISION_WELCOME_MESSAGE } from '../onboarding/vision.js';
 
 // Debounce to prevent rapid sequential button presses (500ms)
 const debounceMap = new Map<number, number>();
@@ -56,6 +58,9 @@ export function registerCallbackHandler(bot: Telegraf<Context>) {
         await handleOnboardingCallback(ctx, userId, callbackData);
       } else if (callbackData.startsWith('decision_')) {
         await handleDecisionCallback(ctx, userId, callbackData);
+      } else if (callbackData.startsWith('vision_')) {
+        // Vision timeout buttons (stubs for future implementation)
+        await handleVisionCallback(ctx, userId, callbackData);
       } else {
         await ctx.answerCbQuery('Неизвестный тип кнопки');
       }
@@ -198,13 +203,29 @@ async function handleDecisionCallback(
     });
     
   } else if (parsed.messageType === 2) {
-    // Переход в STATE_ONBOARDING
+    // Transition to STATE_ONBOARDING
     await transitionDecisionToOnboarding(userId);
-    await ctx.answerCbQuery('Отлично! Начинаем онбординг...');
     
-    // Заглушка — будущая логика STATE_ONBOARDING
-    await ctx.reply('🎉 Отлично! Онбординг будет реализован в следующей задаче.');
+    // Initialize Vision substate
+    await initOnboardingVision(userId);
+    
+    // Send welcome message for Vision phase
+    await ctx.reply(VISION_WELCOME_MESSAGE);
+    
+    await ctx.answerCbQuery();
     
     logger.info('Transitioned to ONBOARDING state', { userId });
   }
+}
+
+/**
+ * Handle Vision timeout callbacks (stubs for next task)
+ */
+async function handleVisionCallback(
+  ctx: Context,
+  userId: number,
+  callbackData: string
+): Promise<void> {
+  logger.info('Vision callback received (stub)', { userId, callbackData });
+  await ctx.answerCbQuery('Эта функция будет доступна в следующей версии');
 }

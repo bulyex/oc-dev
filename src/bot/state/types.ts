@@ -5,6 +5,14 @@ export enum UserFSMState {
   STATE_ONBOARDING = 'STATE_ONBOARDING', // Основной онбординг (Vision, Goals, Plan)
 }
 
+// Onboarding substates (within STATE_ONBOARDING)
+export enum OnboardingSubstate {
+  VISION = 'VISION',   // Формирование Vision
+  GOALS = 'GOALS',     // Future: Постановка целей
+  PLAN = 'PLAN',       // Future: 12-недельный план
+  TIME = 'TIME',       // Future: Предпочтения по времени
+}
+
 // Message types for HELLO state
 export type HelloMessageType = 1 | 2 | 3 | 4 | 5;
 
@@ -14,11 +22,30 @@ export type DecisionMessageType = 1 | 2;
 // Legacy type alias (for backward compatibility)
 export type OnboardingMessageType = HelloMessageType;
 
+// Chat message for AI context
+export interface ChatMessageHistory {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 // User state interface (расширенная версия)
 export interface UserState {
-  fsmState?: UserFSMState;                    // Текущий FSM state
-  helloMessage?: HelloMessageType;            // Текущее сообщение в STATE_HELLO
-  decisionMessage?: DecisionMessageType;      // Текущее сообщение в STATE_DECISION
+  // FSM
+  fsmState?: UserFSMState;
+  
+  // STATE_HELLO
+  helloMessage?: HelloMessageType;
+  
+  // STATE_DECISION
+  decisionMessage?: DecisionMessageType;
+  
+  // STATE_ONBOARDING
+  onboardingSubstate?: OnboardingSubstate;
+  vision?: string;                              // Принятый Vision
+  visionMessageCount?: number;                  // Счётчик сообщений (max 5)
+  visionChatHistory?: ChatMessageHistory[];     // История диалога с AI
+  
+  // Common
   lastMessageId?: number;
   lastTimestamp: number;
   
