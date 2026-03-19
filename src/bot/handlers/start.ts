@@ -21,7 +21,7 @@ export function registerStartHandler(bot: Telegraf<Context>) {
       const firstName = ctx.from?.first_name || 'Пользователь';
 
       // Reset user state (always start from message 1)
-      resetState(userId);
+      await resetState(userId);
 
       // Get first onboarding message
       const onboardingMessage = getOnboardingMessage(1);
@@ -32,7 +32,7 @@ export function registerStartHandler(bot: Telegraf<Context>) {
       });
 
       // Save state
-      setLastMessage(userId, 1, sentMessage.message_id);
+      await setLastMessage(userId, 1, sentMessage.message_id);
 
       logger.info('Onboarding started', { telegramId, firstName, messageId: sentMessage.message_id });
     } catch (error) {
