@@ -605,6 +605,100 @@ export async function clearVisionState(userId: number): Promise<void> {
   logger.info('Vision state cleared', { userId });
 }
 
+// ============================================================
+// GOALS STATE MANAGEMENT
+// ============================================================
+
+/**
+ * Initialize STATE_ONBOARDING with Goals substate
+ */
+export async function initOnboardingGoals(userId: number): Promise<void> {
+  const manager = getStateManager();
+  let state = await manager.get(userId);
+  if (!state) {
+    state = {
+      fsmState: UserFSMState.STATE_ONBOARDING,
+      onboardingSubstate: OnboardingSubstate.GOALS,
+      goalsChatHistory: [],
+      goalsFinalized: false,
+      lastTimestamp: Date.now(),
+    };
+  } else {
+    state = {
+      ...state,
+      fsmState: UserFSMState.STATE_ONBOARDING,
+      onboardingSubstate: OnboardingSubstate.GOALS,
+      goalsChatHistory: [],
+      goalsFinalized: false,
+      lastTimestamp: Date.now(),
+    };
+  }
+  await manager.set(userId, state);
+  logger.info('Initialized ONBOARDING Goals substate', { userId });
+}
+
+/**
+ * Add message to Goals chat history
+ */
+export async function addGoalsChatMessage(
+  userId: number,
+  role: 'user' | 'assistant',
+  content: string
+): Promise<void> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state) return;
+  if (!state.goalsChatHistory) state.goalsChatHistory = [];
+  state.goalsChatHistory.push({ role, content });
+  state.lastTimestamp = Date.now();
+  await manager.set(userId, state);
+}
+
+/**
+ * Get Goals state info
+ */
+export async function getGoalsState(userId: number): Promise<{
+  chatHistory: ChatMessageHistory[];
+  goalsFinalized: boolean;
+} | null> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state || state.fsmState !== UserFSMState.STATE_ONBOARDING
+      || state.onboardingSubstate !== OnboardingSubstate.GOALS) return null;
+  return {
+    chatHistory: state.goalsChatHistory || [],
+    goalsFinalized: state.goalsFinalized || false,
+  };
+}
+
+/**
+ * Get accepted goals text (last assistant message)
+ */
+export async function getAcceptedGoals(userId: number): Promise<string | null> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state) return null;
+  const history = state.goalsChatHistory || [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === 'assistant') return history[i].content;
+  }
+  return null;
+}
+
+/**
+ * Clear Goals state
+ */
+export async function clearGoalsState(userId: number): Promise<void> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state) return;
+  state.goalsChatHistory = [];
+  state.goalsFinalized = false;
+  state.lastTimestamp = Date.now();
+  await manager.set(userId, state);
+  logger.info('Goals state cleared', { userId });
+}
+
 // Re-export types
 export { UserFSMState, OnboardingSubstate } from './types.js';
 export type { OnboardingMessageType, HelloMessageType, DecisionMessageType, UserState, ChatMessageHistory } from './types.js';

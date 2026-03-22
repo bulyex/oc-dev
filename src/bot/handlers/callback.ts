@@ -10,6 +10,8 @@ import {
   transitionDecisionToOnboarding,
   setLastDecisionMessage,
   initOnboardingVision,
+  initOnboardingGoals,
+  getGoalsState,
   getState,
   getVisionState,
   clearVisionState,
@@ -33,7 +35,12 @@ import {
   extractFinalVision,
   VISION_FALLBACK_RESPONSE,
 } from '../onboarding/vision.js';
-import { saveUserVision } from '../../database/client.js';
+import {
+  generateGoalsFirstMessage,
+  createGoalsKeyboard,
+  extractFinalGoals,
+} from '../onboarding/goals.js';
+import { saveUserVision, saveUserGoals } from '../../database/client.js';
 import { sendChatCompletion } from '../ai/client.js';
 import { VISION_SYSTEM_PROMPT } from '../onboarding/prompts/vision.js';
 
@@ -75,6 +82,8 @@ export function registerCallbackHandler(bot: Telegraf<Context>) {
         await handleDecisionCallback(ctx, userId, callbackData);
       } else if (callbackData.startsWith('vision_')) {
         await handleVisionCallback(ctx, userId, callbackData);
+      } else if (callbackData.startsWith('goals_')) {
+        await handleGoalsCallback(ctx, userId, callbackData);
       } else {
         await ctx.answerCbQuery('Неизвестный тип кнопки');
       }
@@ -98,6 +107,17 @@ async function handleOnboardingCallback(
   userId: number,
   callbackData: string
 ): Promise<void> {
+  // Handle transition to Goals phase
+  if (callbackData === 'onboarding_goals_1') {
+    await ctx.answerCbQuery(); // Answer immediately before slow AI call
+    const telegramId = String(userId);
+    await initOnboardingGoals(userId);
+    const { firstMessage, initialGoalsGenerated } = await generateGoalsFirstMessage(userId, telegramId);
+    await ctx.reply(firstMessage, { reply_markup: createGoalsKeyboard() });
+    logger.info('Transitioned to ONBOARDING Goals state', { userId, initialGoalsGenerated });
+    return;
+  }
+
   // Parse callback data
   const parsed = parseCallbackData(callbackData);
   if (!parsed) {
@@ -269,7 +289,7 @@ async function handleVisionCallback(
   if (callbackData === 'vision_example') {
     // Show AI-generated example vision
     // exampleShown = true blocks "Готово!" until user writes their own
-    await setExampleShown(userId, true);
+    await ctx.answerCbQuery(); // Answer immediately before slow AI call
     await addVisionChatMessage(userId, 'user', 'Покажи, пожалуйста, пример видения для вдохновения.');
     
     const visionState = await getVisionState(userId);
@@ -280,9 +300,11 @@ async function handleVisionCallback(
     ];
     
     const aiResponse = await sendChatCompletion(messages) || VISION_FALLBACK_RESPONSE;
+    if (aiResponse !== VISION_FALLBACK_RESPONSE) {
+      await setExampleShown(userId, true);
+    }
     await addVisionChatMessage(userId, 'assistant', aiResponse);
     
-    await ctx.answerCbQuery();
     await ctx.reply(aiResponse, {
       reply_markup: createVisionKeyboard({ showDone: false })
     });
@@ -329,6 +351,44 @@ async function handleVisionCallback(
       }
     );
     logger.info('Vision saved, transitioning to Goals', { userId });
+    return;
+  }
+}
+
+/**
+ * Handle Goals phase callbacks (STATE_ONBOARDING GOALS substate)
+ *
+ * Handles:
+ * - goals_accept: Save goals to database and transition to Plan
+ */
+async function handleGoalsCallback(
+  ctx: Context,
+  userId: number,
+  callbackData: string
+): Promise<void> {
+  const state = await getState(userId);
+  if (state?.onboardingSubstate !== OnboardingSubstate.GOALS) {
+    await ctx.answerCbQuery('Кнопка устарела, начните с /start');
+    return;
+  }
+
+  if (callbackData === 'goals_accept') {
+    const goalsState = await getGoalsState(userId);
+    const chatHistory = goalsState?.chatHistory || [];
+    const goalsText = extractFinalGoals(chatHistory);
+
+    if (!goalsText) {
+      await ctx.answerCbQuery('Не могу сохранить: цели не найдены.');
+      return;
+    }
+
+    const telegramId = String(userId);
+    await saveUserGoals(telegramId, goalsText);
+    await ctx.answerCbQuery('Цели сохранены!');
+    await ctx.reply(
+      'Отлично! Твои цели зафиксированы. Это твой фокус на ближайшие 12 недель.\n\nСледующий шаг: Plan.'
+    );
+    logger.info('Goals saved, transitioning to Plan', { userId });
     return;
   }
 }

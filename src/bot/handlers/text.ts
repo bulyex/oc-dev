@@ -16,6 +16,10 @@ import {
   processVisionMessage,
   createVisionKeyboard,
 } from '../onboarding/vision.js';
+import {
+  processGoalsMessage,
+  createGoalsKeyboard,
+} from '../onboarding/goals.js';
 
 export function registerTextHandler(bot: Telegraf<Context>) {
   bot.on('text', async (ctx) => {
@@ -63,7 +67,15 @@ export function registerTextHandler(bot: Telegraf<Context>) {
           return;
         }
         
-        // Future: handle GOALS, PLAN, TIME substates
+        // Handle GOALS substate
+        if (state?.onboardingSubstate === OnboardingSubstate.GOALS) {
+          const result = await processGoalsMessage(userId, ctx.message.text);
+          await ctx.reply(result.response, { reply_markup: createGoalsKeyboard() });
+          logger.info('Goals message processed', { userId });
+          return;
+        }
+        
+        // Future: handle PLAN, TIME substates
         logger.warn('Unknown onboarding substate', {
           userId,
           substate: state?.onboardingSubstate,
