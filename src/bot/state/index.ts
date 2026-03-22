@@ -547,6 +547,8 @@ export async function saveVision(userId: number, vision: string): Promise<void> 
 export async function getVisionState(userId: number): Promise<{
   messageCount: number;
   chatHistory: ChatMessageHistory[];
+  draftProposed?: boolean;
+  exampleShown?: boolean;
 } | null> {
   const manager = getStateManager();
   const state = await manager.get(userId);
@@ -558,7 +560,49 @@ export async function getVisionState(userId: number): Promise<{
   return {
     messageCount: state.visionMessageCount || 0,
     chatHistory: state.visionChatHistory || [],
+    draftProposed: state.draftProposed || false,
+    exampleShown: state.exampleShown || false,
   };
+}
+
+/**
+ * Set draftProposed flag
+ */
+export async function setDraftProposed(userId: number, proposed: boolean): Promise<void> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state) return;
+  state.draftProposed = proposed;
+  state.lastTimestamp = Date.now();
+  await manager.set(userId, state);
+}
+
+/**
+ * Set exampleShown flag
+ */
+export async function setExampleShown(userId: number, shown: boolean): Promise<void> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state) return;
+  state.exampleShown = shown;
+  state.lastTimestamp = Date.now();
+  await manager.set(userId, state);
+}
+
+/**
+ * Clear Vision state (chat history, flags)
+ */
+export async function clearVisionState(userId: number): Promise<void> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state) return;
+  state.visionChatHistory = [];
+  state.draftProposed = false;
+  state.exampleShown = false;
+  state.visionMessageCount = 0;
+  state.lastTimestamp = Date.now();
+  await manager.set(userId, state);
+  logger.info('Vision state cleared', { userId });
 }
 
 // Re-export types

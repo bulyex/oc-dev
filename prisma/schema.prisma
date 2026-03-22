@@ -4,17 +4,17 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 model User {
-  id               String   @default(uuid())
-  telegramId       String   @id
-  firstName        String?
-  lastName         String?
-  username         String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  currentState     String   @default("init")
-  subscriptionStatus String @default("trial")
+  id                   String    @default(uuid())
+  telegramId           String    @id
+  firstName            String?
+  lastName             String?
+  username             String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  currentState         String    @default("init")
+  subscriptionStatus   String    @default("trial")
+  vision               String?   // Vision text, saved when user clicks "Готово!"
 }
