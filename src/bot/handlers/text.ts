@@ -20,6 +20,10 @@ import {
   processGoalsMessage,
   createGoalsKeyboard,
 } from '../onboarding/goals.js';
+import {
+  processPlanMessage,
+  createPlanKeyboard,
+} from '../onboarding/plan.js';
 
 export function registerTextHandler(bot: Telegraf<Context>) {
   bot.on('text', async (ctx) => {
@@ -72,6 +76,15 @@ export function registerTextHandler(bot: Telegraf<Context>) {
           const result = await processGoalsMessage(userId, ctx.message.text);
           await ctx.reply(result.response, { reply_markup: createGoalsKeyboard() });
           logger.info('Goals message processed', { userId });
+          return;
+        }
+        
+        // Handle PLAN substate
+        if (state?.onboardingSubstate === OnboardingSubstate.PLAN) {
+          const result = await processPlanMessage(userId, ctx.message.text);
+          const trimmed = result.response.length > 4000 ? result.response.slice(0, 4000) + '\n\n... (ответ обрезан — напиши, и я продолжу)' : result.response;
+          await ctx.reply(trimmed, { reply_markup: createPlanKeyboard() });
+          logger.info('Plan message processed', { userId });
           return;
         }
         

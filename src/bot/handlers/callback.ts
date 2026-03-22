@@ -40,7 +40,13 @@ import {
   createGoalsKeyboard,
   extractFinalGoals,
 } from '../onboarding/goals.js';
-import { saveUserVision, saveUserGoals } from '../../database/client.js';
+import {
+  generatePlanFirstMessage,
+  createPlanKeyboard,
+  extractFinalPlan,
+} from '../onboarding/plan.js';
+import { initOnboardingPlan, getPlanState } from '../state/index.js';
+import { saveUserVision, saveUserGoals, saveUserPlan } from '../../database/client.js';
 import { sendChatCompletion } from '../ai/client.js';
 import { VISION_SYSTEM_PROMPT } from '../onboarding/prompts/vision.js';
 
@@ -84,6 +90,8 @@ export function registerCallbackHandler(bot: Telegraf<Context>) {
         await handleVisionCallback(ctx, userId, callbackData);
       } else if (callbackData.startsWith('goals_')) {
         await handleGoalsCallback(ctx, userId, callbackData);
+      } else if (callbackData.startsWith('plan_')) {
+        await handlePlanCallback(ctx, userId, callbackData);
       } else {
         await ctx.answerCbQuery('Неизвестный тип кнопки');
       }
@@ -115,6 +123,18 @@ async function handleOnboardingCallback(
     const { firstMessage, initialGoalsGenerated } = await generateGoalsFirstMessage(userId, telegramId);
     await ctx.reply(firstMessage, { reply_markup: createGoalsKeyboard() });
     logger.info('Transitioned to ONBOARDING Goals state', { userId, initialGoalsGenerated });
+    return;
+  }
+
+  // Handle transition to Plan phase
+  if (callbackData === 'onboarding_plan_1') {
+    await ctx.answerCbQuery(); // Answer immediately before slow AI call
+    const telegramId = String(userId);
+    await initOnboardingPlan(userId);
+    const { firstMessage, initialPlanGenerated } = await generatePlanFirstMessage(userId, telegramId);
+    const trimmed = firstMessage.length > 4000 ? firstMessage.slice(0, 4000) + '\n\n... (план обрезан — напиши, и я продолжу)' : firstMessage;
+    await ctx.reply(trimmed, { reply_markup: createPlanKeyboard() });
+    logger.info('Transitioned to ONBOARDING Plan state', { userId, initialPlanGenerated });
     return;
   }
 
@@ -386,9 +406,52 @@ async function handleGoalsCallback(
     await saveUserGoals(telegramId, goalsText);
     await ctx.answerCbQuery('Цели сохранены!');
     await ctx.reply(
-      'Отлично! Твои цели зафиксированы. Это твой фокус на ближайшие 12 недель.\n\nСледующий шаг: Plan.'
+      'Отлично! Твои цели зафиксированы. Это твой фокус на ближайшие 12 недель.\n\nСледующий шаг: Plan.',
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Продолжить →', callback_data: 'onboarding_plan_1' }]]
+        }
+      }
     );
     logger.info('Goals saved, transitioning to Plan', { userId });
+    return;
+  }
+}
+
+/**
+ * Handle Plan phase callbacks (STATE_ONBOARDING PLAN substate)
+ *
+ * Handles:
+ * - plan_accept: Save plan to database and transition to Time (placeholder)
+ */
+async function handlePlanCallback(
+  ctx: Context,
+  userId: number,
+  callbackData: string
+): Promise<void> {
+  const state = await getState(userId);
+  if (state?.onboardingSubstate !== OnboardingSubstate.PLAN) {
+    await ctx.answerCbQuery('Кнопка устарела, начните с /start');
+    return;
+  }
+
+  if (callbackData === 'plan_accept') {
+    const planState = await getPlanState(userId);
+    const chatHistory = planState?.chatHistory || [];
+    const planText = extractFinalPlan(chatHistory);
+
+    if (!planText) {
+      await ctx.answerCbQuery('Не могу сохранить: план не найден.');
+      return;
+    }
+
+    const telegramId = String(userId);
+    await saveUserPlan(telegramId, planText);
+    await ctx.answerCbQuery('План сохранен!');
+    await ctx.reply(
+      'Отлично! Твой план на 12 недель зафиксирован.\n\nЭтап START.'
+    );
+    logger.info('Plan saved, transitioning to START', { userId });
     return;
   }
 }

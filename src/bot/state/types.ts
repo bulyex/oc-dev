@@ -51,6 +51,10 @@ export interface UserState {
   goalsChatHistory?: ChatMessageHistory[];      // История диалога Goals-агента
   goalsFinalized?: boolean;                     // Цели финализированы (нажата "Принять")
   
+  // STATE_ONBOARDING PLAN substate
+  planChatHistory?: ChatMessageHistory[];       // История диалога Plan-агента
+  planFinalized?: boolean;                      // План финализирован (нажата "Принять план")
+  
   // Common
   lastMessageId?: number;
   lastTimestamp: number;

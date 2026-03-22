@@ -18,4 +18,5 @@ model User {
   subscriptionStatus   String    @default("trial")
   vision               String?   // Vision text, saved when user clicks "Готово!"
   goals                String?   // Goals text (finalized)
+  plan                 String?   // 12-week plan text (finalized)
 }
