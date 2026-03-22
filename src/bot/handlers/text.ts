@@ -7,13 +7,14 @@ import {
   setLastDecisionMessage,
   getFSMState,
   getState,
+  setExampleShown,
 } from '../state/index.js';
 import { UserFSMState, OnboardingSubstate } from '../state/types.js';
 import { getOnboardingMessage } from '../onboarding/index.js';
 import { getDecisionMessage } from '../decision/index.js';
 import {
   processVisionMessage,
-  createVisionTimeoutKeyboard,
+  createVisionKeyboard,
 } from '../onboarding/vision.js';
 
 export function registerTextHandler(bot: Telegraf<Context>) {
@@ -42,18 +43,22 @@ export function registerTextHandler(bot: Telegraf<Context>) {
         if (state?.onboardingSubstate === OnboardingSubstate.VISION) {
           const result = await processVisionMessage(userId, ctx.message.text);
           
-          if (result.showTimeoutKeyboard) {
-            await ctx.reply(result.response, {
-              reply_markup: createVisionTimeoutKeyboard(),
-            });
-          } else {
-            await ctx.reply(result.response);
+          // ShowDone = draftProposed && !exampleShown
+          const showDone = result.draftProposed && !state.exampleShown;
+          const keyboard = createVisionKeyboard({ showDone });
+          
+          await ctx.reply(result.response, { reply_markup: keyboard });
+          
+          // After user response, reset exampleShown (they wrote their own)
+          if (state.exampleShown) {
+            await setExampleShown(userId, false);
           }
           
           logger.info('Vision message processed', {
             userId,
             isAccepted: result.isAccepted,
-            showTimeoutKeyboard: result.showTimeoutKeyboard,
+            draftProposed: result.draftProposed,
+            showDone,
           });
           return;
         }

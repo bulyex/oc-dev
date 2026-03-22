@@ -42,8 +42,10 @@ export interface UserState {
   // STATE_ONBOARDING
   onboardingSubstate?: OnboardingSubstate;
   vision?: string;                              // Принятый Vision
-  visionMessageCount?: number;                  // Счётчик сообщений (max 5)
+  visionMessageCount?: number;                  // Счётчик сообщений (без лимита)
   visionChatHistory?: ChatMessageHistory[];     // История диалога с AI
+  draftProposed?: boolean;                     // Агент предложил черновик, "Готово!" доступна
+  exampleShown?: boolean;                       // Пользователю показан пример, "Готово!" заблокирована пока не напишет своё
   
   // Common
   lastMessageId?: number;

@@ -10,8 +10,15 @@ import {
   transitionDecisionToOnboarding,
   setLastDecisionMessage,
   initOnboardingVision,
+  getState,
+  getVisionState,
+  clearVisionState,
+  setExampleShown,
+  setDraftProposed,
+  addVisionChatMessage,
+  saveVision,
 } from '../state/index.js';
-import { UserFSMState } from '../state/types.js';
+import { UserFSMState, OnboardingSubstate } from '../state/types.js';
 import {
   parseCallbackData,
   getOnboardingMessage
@@ -20,7 +27,15 @@ import {
   parseDecisionCallbackData,
   getDecisionMessage
 } from '../decision/index.js';
-import { VISION_WELCOME_MESSAGE } from '../onboarding/vision.js';
+import {
+  VISION_WELCOME_MESSAGE,
+  createVisionKeyboard,
+  extractFinalVision,
+  VISION_FALLBACK_RESPONSE,
+} from '../onboarding/vision.js';
+import { saveUserVision } from '../../database/client.js';
+import { sendChatCompletion } from '../ai/client.js';
+import { VISION_SYSTEM_PROMPT } from '../onboarding/prompts/vision.js';
 
 // Debounce to prevent rapid sequential button presses (500ms)
 const debounceMap = new Map<number, number>();
@@ -59,7 +74,6 @@ export function registerCallbackHandler(bot: Telegraf<Context>) {
       } else if (callbackData.startsWith('decision_')) {
         await handleDecisionCallback(ctx, userId, callbackData);
       } else if (callbackData.startsWith('vision_')) {
-        // Vision timeout buttons (stubs for future implementation)
         await handleVisionCallback(ctx, userId, callbackData);
       } else {
         await ctx.answerCbQuery('Неизвестный тип кнопки');
@@ -210,22 +224,111 @@ async function handleDecisionCallback(
     await initOnboardingVision(userId);
     
     // Send welcome message for Vision phase
-    await ctx.reply(VISION_WELCOME_MESSAGE);
+    await ctx.reply(VISION_WELCOME_MESSAGE, {
+      reply_markup: createVisionKeyboard({ showDone: false })
+    });
     
     await ctx.answerCbQuery();
     
-    logger.info('Transitioned to ONBOARDING state', { userId });
+    logger.info('Transitioned to ONBOARDING Vision state', { userId });
   }
 }
 
 /**
- * Handle Vision timeout callbacks (stubs for next task)
+ * Handle Vision phase callbacks (STATE_ONBOARDING VISION substate)
+ * 
+ * Handles:
+ * - vision_reset: Clear chat history and show welcome message
+ * - vision_example: Show AI-generated example vision
+ * - vision_done: Save vision to database and transition to Goals
  */
 async function handleVisionCallback(
   ctx: Context,
   userId: number,
   callbackData: string
 ): Promise<void> {
-  logger.info('Vision callback received (stub)', { userId, callbackData });
-  await ctx.answerCbQuery('Эта функция будет доступна в следующей версии');
+  const state = await getState(userId);
+  if (state?.onboardingSubstate !== OnboardingSubstate.VISION) {
+    await ctx.answerCbQuery('Кнопка устарела, начните с /start');
+    return;
+  }
+  
+  const telegramId = String(userId);
+  
+  if (callbackData === 'vision_reset') {
+    // Clear vision state and show welcome message
+    await clearVisionState(userId);
+    await ctx.answerCbQuery();
+    await ctx.reply(VISION_WELCOME_MESSAGE, {
+      reply_markup: createVisionKeyboard({ showDone: false })
+    });
+    logger.info('Vision reset by user', { userId });
+    return;
+  }
+  
+  if (callbackData === 'vision_example') {
+    // Show AI-generated example vision
+    // exampleShown = true blocks "Готово!" until user writes their own
+    await setExampleShown(userId, true);
+    await addVisionChatMessage(userId, 'user', 'Покажи, пожалуйста, пример видения для вдохновения.');
+    
+    const visionState = await getVisionState(userId);
+    const chatHistory = visionState?.chatHistory || [];
+    const messages = [
+      { role: 'system' as const, content: VISION_SYSTEM_PROMPT },
+      ...chatHistory.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    ];
+    
+    const aiResponse = await sendChatCompletion(messages) || VISION_FALLBACK_RESPONSE;
+    await addVisionChatMessage(userId, 'assistant', aiResponse);
+    
+    await ctx.answerCbQuery();
+    await ctx.reply(aiResponse, {
+      reply_markup: createVisionKeyboard({ showDone: false })
+    });
+    logger.info('Vision example shown', { userId });
+    return;
+  }
+  
+  if (callbackData === 'vision_done') {
+    const visionState = await getVisionState(userId);
+    
+    // Check if example was shown - if so, don't allow saving example text
+    if (visionState?.exampleShown) {
+      await ctx.answerCbQuery('Сначала напишите своё видение, опираясь на пример. Я помогу оформить.');
+      return;
+    }
+    
+    // Check if draft was proposed
+    if (!visionState?.draftProposed) {
+      await ctx.answerCbQuery('Сначала нужно получить черновик видения от AI. Напишите что-нибудь о себе.');
+      return;
+    }
+    
+    const chatHistory = visionState?.chatHistory || [];
+    const visionText = extractFinalVision(chatHistory);
+    
+    if (!visionText) {
+      await ctx.answerCbQuery('Не могу сохранить: видение не найдено. Напишите что-нибудь о себе.');
+      return;
+    }
+    
+    // Save vision to database
+    await saveUserVision(telegramId, visionText);
+    await saveVision(userId, visionText);
+    await setDraftProposed(userId, false);
+    await setExampleShown(userId, false);
+    
+    await ctx.answerCbQuery('Видение сохранено!');
+    await ctx.reply(
+      'Отлично! Твоё видение сохранено. Это твой ориентир на ближайшие 12 недель.\n\nСледующий шаг: Goals.',
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Продолжить →', callback_data: 'onboarding_goals_1' }]]
+        }
+      }
+    );
+    logger.info('Vision saved, transitioning to Goals', { userId });
+    return;
+  }
 }
