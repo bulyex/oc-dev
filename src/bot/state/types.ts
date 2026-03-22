@@ -47,6 +47,10 @@ export interface UserState {
   draftProposed?: boolean;                     // Агент предложил черновик, "Готово!" доступна
   exampleShown?: boolean;                       // Пользователю показан пример, "Готово!" заблокирована пока не напишет своё
   
+  // STATE_ONBOARDING GOALS substate
+  goalsChatHistory?: ChatMessageHistory[];      // История диалога Goals-агента
+  goalsFinalized?: boolean;                     // Цели финализированы (нажата "Принять")
+  
   // Common
   lastMessageId?: number;
   lastTimestamp: number;
