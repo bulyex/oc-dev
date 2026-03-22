@@ -699,6 +699,100 @@ export async function clearGoalsState(userId: number): Promise<void> {
   logger.info('Goals state cleared', { userId });
 }
 
+// ============================================================
+// PLAN STATE MANAGEMENT
+// ============================================================
+
+/**
+ * Initialize STATE_ONBOARDING with Plan substate
+ */
+export async function initOnboardingPlan(userId: number): Promise<void> {
+  const manager = getStateManager();
+  let state = await manager.get(userId);
+  if (!state) {
+    state = {
+      fsmState: UserFSMState.STATE_ONBOARDING,
+      onboardingSubstate: OnboardingSubstate.PLAN,
+      planChatHistory: [],
+      planFinalized: false,
+      lastTimestamp: Date.now(),
+    };
+  } else {
+    state = {
+      ...state,
+      fsmState: UserFSMState.STATE_ONBOARDING,
+      onboardingSubstate: OnboardingSubstate.PLAN,
+      planChatHistory: [],
+      planFinalized: false,
+      lastTimestamp: Date.now(),
+    };
+  }
+  await manager.set(userId, state);
+  logger.info('Initialized ONBOARDING Plan substate', { userId });
+}
+
+/**
+ * Add message to Plan chat history
+ */
+export async function addPlanChatMessage(
+  userId: number,
+  role: 'user' | 'assistant',
+  content: string
+): Promise<void> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state) return;
+  if (!state.planChatHistory) state.planChatHistory = [];
+  state.planChatHistory.push({ role, content });
+  state.lastTimestamp = Date.now();
+  await manager.set(userId, state);
+}
+
+/**
+ * Get Plan state info
+ */
+export async function getPlanState(userId: number): Promise<{
+  chatHistory: ChatMessageHistory[];
+  planFinalized: boolean;
+} | null> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state || state.fsmState !== UserFSMState.STATE_ONBOARDING
+      || state.onboardingSubstate !== OnboardingSubstate.PLAN) return null;
+  return {
+    chatHistory: state.planChatHistory || [],
+    planFinalized: state.planFinalized || false,
+  };
+}
+
+/**
+ * Get accepted plan text (last assistant message)
+ */
+export async function getAcceptedPlan(userId: number): Promise<string | null> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state) return null;
+  const history = state.planChatHistory || [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === 'assistant') return history[i].content;
+  }
+  return null;
+}
+
+/**
+ * Clear Plan state
+ */
+export async function clearPlanState(userId: number): Promise<void> {
+  const manager = getStateManager();
+  const state = await manager.get(userId);
+  if (!state) return;
+  state.planChatHistory = [];
+  state.planFinalized = false;
+  state.lastTimestamp = Date.now();
+  await manager.set(userId, state);
+  logger.info('Plan state cleared', { userId });
+}
+
 // Re-export types
 export { UserFSMState, OnboardingSubstate } from './types.js';
 export type { OnboardingMessageType, HelloMessageType, DecisionMessageType, UserState, ChatMessageHistory } from './types.js';

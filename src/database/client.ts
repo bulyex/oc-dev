@@ -127,6 +127,36 @@ export async function getUserGoals(telegramId: string): Promise<string | null> {
   }
 }
 
+export async function saveUserPlan(telegramId: string, plan: string): Promise<void> {
+  const client = getPrismaClient();
+  if (!client) return;
+  try {
+    await client.user.update({
+      where: { telegramId },
+      data: { plan },
+    });
+    logger.info('Plan saved to database', { telegramId, planLength: plan.length });
+  } catch (error) {
+    logger.error('Failed to save plan to database', { telegramId, error });
+    throw error;
+  }
+}
+
+export async function getUserPlan(telegramId: string): Promise<string | null> {
+  const client = getPrismaClient();
+  if (!client) return null;
+  try {
+    const user = await client.user.findUnique({
+      where: { telegramId },
+      select: { plan: true },
+    });
+    return user?.plan || null;
+  } catch (error) {
+    logger.error('Failed to get plan from database', { telegramId, error });
+    return null;
+  }
+}
+
 export async function disconnectDatabase() {
   if (prisma) {
     await prisma.$disconnect();
