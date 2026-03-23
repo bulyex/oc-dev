@@ -2,8 +2,8 @@
  * Plan Module
  *
  * Handles Plan phase in STATE_ONBOARDING:
- * - Generates 12-week plan from Vision and Goals
- * - AI-assisted plan refinement dialog (3-6 messages)
+ * - Generates weekly plan from Vision and Goals
+ * - AI-assisted plan refinement dialog (3-4 messages)
  * - "Принять план" button on every message
  * - Saves plan to DB, transitions to Time (placeholder)
  */
@@ -19,20 +19,18 @@ import { logger } from '../../utils/logger.js';
 /**
  * Fallback response when AI is not available
  */
-export const PLAN_FALLBACK_RESPONSE = `На основе твоего видения и целей предлагаю план на 12 недель:
+export const PLAN_FALLBACK_RESPONSE = `На основе твоего видения и целей предлагаю план на неделю:
 
-## План на 12 недель
+## План на неделю
 
-### Ежедневные действия
-- [AI недоступен — сформулируйте действия самостоятельно]
+Фокус недели: [AI недоступен — сформулируйте фокус]
 
-### Регулярные действия
-- [AI недоступен]
+Что делаем:
+1. [AI недоступен — сформулируйте действия]
+2. [AI недоступен — сформулируйте действия]
+3. [AI недоступен — сформулируйте действия]
 
-### Специфика по неделям
-- Недели 1-2: Адаптация
-- Неделя 6: Промежуточный обзор
-- Недели 11-12: Финальный рывок
+Ритм недели: [AI недоступен — опишите ритм]
 
 ---
 
@@ -79,6 +77,8 @@ export async function generatePlanFirstMessage(
     goals: goalsArray,
     user_context: {
       timezone: 'UTC+3',
+      week_number: 1,
+      total_weeks: 12,
     },
   }, null, 2);
 
@@ -90,7 +90,7 @@ export async function generatePlanFirstMessage(
     await addPlanChatMessage(userId, 'user', userContext);
     await addPlanChatMessage(userId, 'assistant', PLAN_FALLBACK_RESPONSE);
     return {
-      firstMessage: `На основе твоего видения и целей я предлагаю тебе следующий план действий на 3 месяца. Напиши, если хочешь что-то поправить.\n\n${PLAN_FALLBACK_RESPONSE}`,
+      firstMessage: `На основе твоего видения и целей я предлагаю тебе следующий план действий на неделю. Напиши, если хочешь что-то поправить.\n\n${PLAN_FALLBACK_RESPONSE}`,
       initialPlanGenerated: true,
     };
   }
@@ -106,7 +106,7 @@ export async function generatePlanFirstMessage(
     await addPlanChatMessage(userId, 'user', userContext);
     await addPlanChatMessage(userId, 'assistant', PLAN_FALLBACK_RESPONSE);
     return {
-      firstMessage: `На основе твоего видения и целей я предлагаю тебе следующий план действий на 3 месяца. Напиши, если хочешь что-то поправить.\n\n${PLAN_FALLBACK_RESPONSE}`,
+      firstMessage: `На основе твоего видения и целей я предлагаю тебе следующий план действий на неделю. Напиши, если хочешь что-то поправить.\n\n${PLAN_FALLBACK_RESPONSE}`,
       initialPlanGenerated: true,
     };
   }
