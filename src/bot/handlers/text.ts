@@ -49,6 +49,7 @@ export function registerTextHandler(bot: Telegraf<Context>) {
         
         // Route by onboarding substate
         if (state?.onboardingSubstate === OnboardingSubstate.VISION) {
+          await ctx.replyWithChatAction('typing'); // task_11: typing indicator
           const result = await processVisionMessage(userId, ctx.message.text);
           
           // ShowDone = draftProposed && !exampleShown
@@ -73,6 +74,7 @@ export function registerTextHandler(bot: Telegraf<Context>) {
         
         // Handle GOALS substate
         if (state?.onboardingSubstate === OnboardingSubstate.GOALS) {
+          await ctx.replyWithChatAction('typing'); // task_11: typing indicator
           const result = await processGoalsMessage(userId, ctx.message.text);
           await ctx.reply(result.response, { reply_markup: createGoalsKeyboard() });
           logger.info('Goals message processed', { userId });
@@ -81,6 +83,7 @@ export function registerTextHandler(bot: Telegraf<Context>) {
         
         // Handle PLAN substate
         if (state?.onboardingSubstate === OnboardingSubstate.PLAN) {
+          await ctx.replyWithChatAction('typing'); // task_11: typing indicator
           const result = await processPlanMessage(userId, ctx.message.text);
           const trimmed = result.response.length > 4000 ? result.response.slice(0, 4000) + '\n\n... (ответ обрезан — напиши, и я продолжу)' : result.response;
           await ctx.reply(trimmed, { reply_markup: createPlanKeyboard() });
