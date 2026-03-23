@@ -146,6 +146,28 @@ export async function transitionDecisionToOnboarding(userId: number): Promise<vo
 }
 
 /**
+ * Transition from ONBOARDING to ACTIVE (after plan_accept)
+ */
+export async function transitionOnboardingToActive(userId: number): Promise<void> {
+  const manager = getStateManager();
+  let state = await manager.get(userId);
+
+  if (state) {
+    state = {
+      ...state,
+      fsmState: UserFSMState.STATE_ACTIVE,
+      onboardingSubstate: undefined, // Clear substate
+      lastTimestamp: Date.now(),
+    };
+    await manager.set(userId, state);
+  } else {
+    await setFSMState(userId, UserFSMState.STATE_ACTIVE);
+  }
+
+  logger.info('Transitioned to ACTIVE state', { userId });
+}
+
+/**
  * Set last decision message for a user
  */
 export async function setLastDecisionMessage(

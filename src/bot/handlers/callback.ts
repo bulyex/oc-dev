@@ -8,6 +8,7 @@ import {
   getFSMState,
   transitionHelloToDecision,
   transitionDecisionToOnboarding,
+  transitionOnboardingToActive,
   setLastDecisionMessage,
   initOnboardingVision,
   initOnboardingGoals,
@@ -45,8 +46,9 @@ import {
   createPlanKeyboard,
   extractFinalPlan,
 } from '../onboarding/plan.js';
+import { generateMiniDailyPlan } from '../ai/mini_daily_plan.js';
 import { initOnboardingPlan, getPlanState } from '../state/index.js';
-import { saveUserVision, saveUserGoals, saveUserPlan } from '../../database/client.js';
+import { saveUserVision, saveUserGoals, saveUserPlan, getUserVision, getUserGoals } from '../../database/client.js';
 import { sendChatCompletion } from '../ai/client.js';
 import { VISION_SYSTEM_PROMPT } from '../onboarding/prompts/vision.js';
 
@@ -118,6 +120,7 @@ async function handleOnboardingCallback(
   // Handle transition to Goals phase
   if (callbackData === 'onboarding_goals_1') {
     await ctx.answerCbQuery(); // Answer immediately before slow AI call
+    await ctx.replyWithChatAction('typing'); // task_11: typing indicator
     const telegramId = String(userId);
     await initOnboardingGoals(userId);
     const { firstMessage, initialGoalsGenerated } = await generateGoalsFirstMessage(userId, telegramId);
@@ -129,6 +132,7 @@ async function handleOnboardingCallback(
   // Handle transition to Plan phase
   if (callbackData === 'onboarding_plan_1') {
     await ctx.answerCbQuery(); // Answer immediately before slow AI call
+    await ctx.replyWithChatAction('typing'); // task_11: typing indicator
     const telegramId = String(userId);
     await initOnboardingPlan(userId);
     const { firstMessage, initialPlanGenerated } = await generatePlanFirstMessage(userId, telegramId);
@@ -243,34 +247,22 @@ async function handleDecisionCallback(
   }
   
   if (parsed.messageType === 1) {
-    // Переход к сообщению 2
-    const nextMessage = getDecisionMessage(2);
-    const sentMessage = await ctx.reply(nextMessage.text, {
-      reply_markup: nextMessage.keyboard
-    });
-    await setLastDecisionMessage(userId, 2, sentMessage.message_id);
-    await ctx.answerCbQuery();
-    
-    logger.info('Decision step 1 completed', {
-      userId,
-      messageId: sentMessage.message_id
-    });
-    
-  } else if (parsed.messageType === 2) {
-    // Transition to STATE_ONBOARDING
+    // task_11: переход сразу к Vision (одно сообщение вместо двух)
     await transitionDecisionToOnboarding(userId);
-    
-    // Initialize Vision substate
     await initOnboardingVision(userId);
-    
-    // Send welcome message for Vision phase
     await ctx.reply(VISION_WELCOME_MESSAGE, {
       reply_markup: createVisionKeyboard({ showDone: false })
     });
-    
     await ctx.answerCbQuery();
-    
-    logger.info('Transitioned to ONBOARDING Vision state', { userId });
+    logger.info('Decision completed, transitioned to ONBOARDING Vision state', { userId });
+  } else {
+    // Legacy fallback
+    await transitionDecisionToOnboarding(userId);
+    await initOnboardingVision(userId);
+    await ctx.reply(VISION_WELCOME_MESSAGE, {
+      reply_markup: createVisionKeyboard({ showDone: false })
+    });
+    await ctx.answerCbQuery();
   }
 }
 
@@ -422,7 +414,7 @@ async function handleGoalsCallback(
  * Handle Plan phase callbacks (STATE_ONBOARDING PLAN substate)
  *
  * Handles:
- * - plan_accept: Save plan to database and transition to Time (placeholder)
+ * - plan_accept: Save plan to database, transition to STATE_ACTIVE, generate mini daily plan
  */
 async function handlePlanCallback(
   ctx: Context,
@@ -446,12 +438,31 @@ async function handlePlanCallback(
     }
 
     const telegramId = String(userId);
+    
+    // Save plan to database
     await saveUserPlan(telegramId, planText);
-    await ctx.answerCbQuery('План сохранен!');
+    
+    // Transition to STATE_ACTIVE
+    await transitionOnboardingToActive(userId);
+    
+    // Load vision and goals for mini daily plan
+    const vision = await getUserVision(telegramId);
+    const goals = await getUserGoals(telegramId);
+    
+    // Generate mini daily plan
+    let dailyPlan: string;
+    if (vision && goals && planText) {
+      dailyPlan = await generateMiniDailyPlan(vision, goals, planText);
+    } else {
+      dailyPlan = '• Выполнить первое действие из плана\n• Продвинуться к ближайшей цели\n• Подвести итоги дня вечером';
+    }
+    
+    // Acknowledge callback (may fail if query is stale — that's OK, reply goes through)
+    await ctx.answerCbQuery('План сохранён!').catch(() => {});
     await ctx.reply(
-      'Отлично! Твой план на 12 недель зафиксирован.\n\nЭтап START.'
+      `Начинаем работу!\nТвой минимум на сегодня:\n${dailyPlan}\n\nПиши мне о своих результатах, будем фиксировать прогресс.\nУдачи, всё получится!`
     );
-    logger.info('Plan saved, transitioning to START', { userId });
+    logger.info('Plan saved, transitioned to ACTIVE state', { userId });
     return;
   }
 }

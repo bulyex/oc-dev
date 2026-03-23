@@ -51,7 +51,8 @@ export interface VisionKeyboardOptions {
 export function createVisionKeyboard(options: VisionKeyboardOptions): InlineKeyboardMarkup {
   const buttons: Array<{ text: string; callback_data: string }> = [
     { text: '🔄 Начать заново', callback_data: 'vision_reset' },
-    { text: '📝 Дай пример', callback_data: 'vision_example' },
+    // Кнопка "Дай пример" скрыта (task_11), но callback handler остаётся для совместимости
+    // { text: '📝 Дай пример', callback_data: 'vision_example' },
   ];
   if (options.showDone) {
     buttons.push({ text: '✅ Готово!', callback_data: 'vision_done' });

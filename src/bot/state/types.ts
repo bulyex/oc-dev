@@ -3,6 +3,7 @@ export enum UserFSMState {
   STATE_HELLO = 'STATE_HELLO',           // Первые 5 приветственных сообщений
   STATE_DECISION = 'STATE_DECISION',     // Принятие решения (2 сообщения)
   STATE_ONBOARDING = 'STATE_ONBOARDING', // Основной онбординг (Vision, Goals, Plan)
+  STATE_ACTIVE = 'active',               // Активный режим — онбординг завершён
 }
 
 // Onboarding substates (within STATE_ONBOARDING)

@@ -1,18 +1,11 @@
 import { PrismaClient } from '@prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { logger } from '../utils/logger.js';
-import { hasDatabase, config } from '../config/index.js';
+import { hasDatabase } from '../config/index.js';
 
 let prisma: PrismaClient | null = null;
 
 function createPrismaClient(): PrismaClient {
-  const dbUrl = config.databaseUrl ?? 'file:./data/dev.db';
-  let dbPath = dbUrl;
-  if (dbUrl.startsWith('file:')) {
-    dbPath = dbUrl.slice(5); // strip "file:" prefix
-  }
-  const adapter = new PrismaBetterSqlite3({ url: dbPath });
-  return new PrismaClient({ adapter });
+  return new PrismaClient();
 }
 
 export function getPrismaClient(): PrismaClient | null {
