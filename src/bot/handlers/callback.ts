@@ -55,6 +55,19 @@ import { VISION_SYSTEM_PROMPT } from '../onboarding/prompts/vision.js';
 // Debounce to prevent rapid sequential button presses (500ms)
 const debounceMap = new Map<number, number>();
 const DEBOUNCE_MS = 500;
+const DEBOUNCE_TTL_MS = DEBOUNCE_MS * 10; // 5 seconds TTL
+
+/**
+ * Clean up stale debounce entries (lazy cleanup on each access)
+ */
+function cleanupDebounceMap(): void {
+  const now = Date.now();
+  for (const [userId, timestamp] of debounceMap) {
+    if (now - timestamp > DEBOUNCE_TTL_MS) {
+      debounceMap.delete(userId);
+    }
+  }
+}
 
 export function registerCallbackHandler(bot: Telegraf<Context>) {
   bot.on('callback_query', async (ctx) => {
@@ -73,6 +86,30 @@ export function registerCallbackHandler(bot: Telegraf<Context>) {
         return;
       }
 
+      // Validate callback data: length check and sanitize
+      const MAX_CALLBACK_LENGTH = 100;
+      if (callbackData.length > MAX_CALLBACK_LENGTH) {
+        logger.warn('Callback data too long, rejecting', {
+          userId,
+          length: callbackData.length,
+          maxLength: MAX_CALLBACK_LENGTH,
+        });
+        await ctx.answerCbQuery('Неверный формат кнопки');
+        return;
+      }
+
+      // Sanitize: only allow alphanumeric, underscore, and hyphen
+      const sanitizedCallbackData = callbackData.replace(/[^\w_-]/g, '');
+      if (sanitizedCallbackData !== callbackData) {
+        logger.warn('Callback data contained invalid characters, rejecting', {
+          userId,
+          original: callbackData.slice(0, 50),
+          sanitized: sanitizedCallbackData.slice(0, 50),
+        });
+        await ctx.answerCbQuery('Неверный формат кнопки');
+        return;
+      }
+
       // Check debounce (prevent rapid double-clicks)
       const lastCallbackTime = debounceMap.get(userId) || 0;
       const now = Date.now();
@@ -82,6 +119,9 @@ export function registerCallbackHandler(bot: Telegraf<Context>) {
         return;
       }
       debounceMap.set(userId, now);
+      
+      // Lazy cleanup of stale entries
+      cleanupDebounceMap();
 
       // Route by callback prefix
       if (callbackData.startsWith('onboarding_')) {

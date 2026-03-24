@@ -51,18 +51,31 @@ export async function sendChatCompletion(
     const data = await response.json() as ChatCompletionResponse;
     const content = data.choices[0]?.message?.content;
     
-    if (content) {
-      return content;
+    if (content && content.trim().length > 0) {
+      return content.trim();
     }
     
     // Reasoning models may return content as null with text in reasoning field
     const reasoning = (data as any).choices[0]?.message?.reasoning;
-    if (reasoning) {
+    if (reasoning && typeof reasoning === 'string') {
+      // Validate reasoning content
+      const trimmedReasoning = reasoning.trim();
+      const MIN_REASONING_LENGTH = 10;
+      
+      if (trimmedReasoning.length < MIN_REASONING_LENGTH) {
+        logger.warn('AI reasoning content too short, rejecting', {
+          length: trimmedReasoning.length,
+          minLength: MIN_REASONING_LENGTH,
+          preview: trimmedReasoning.slice(0, 50),
+        });
+        return null;
+      }
+      
       logger.warn('AI returned reasoning instead of content, extracting summary');
       // Take last non-empty line or last sentence as the actual response
-      const lines = reasoning.split('\n').filter((l: string) => l.trim().length > 0);
+      const lines = trimmedReasoning.split('\n').filter((l: string) => l.trim().length > 0);
       const lastLine = lines[lines.length - 1]?.trim();
-      return lastLine || reasoning.slice(0, 200);
+      return lastLine || trimmedReasoning.slice(0, 200);
     }
     
     logger.warn('AI returned empty content', { data: JSON.stringify(data).slice(0, 500) });
