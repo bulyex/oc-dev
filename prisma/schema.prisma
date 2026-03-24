@@ -7,17 +7,167 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============ User Model (modified) ============
+
 model User {
-  id                   String    @default(uuid())
-  telegramId           String    @id
+  id                   String    @id @default(uuid())
+  telegramId           String    @unique
   firstName            String?
   lastName             String?
   username             String?
+  
+  // FSM State
+  fsmState             String    @default("hello")
+  
+  // Legacy fields (kept for backward compatibility and prompts)
+  vision               String?   // Vision text for quick access in prompts
+  
+  // Backup text fields (deprecated, kept for migration safety)
+  goals                String?   // Goals text (backup, structured data in Goal model)
+  plan                 String?   // 12-week plan text (backup, structured data in Cycle)
+  
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
-  currentState         String    @default("init")
-  subscriptionStatus   String    @default("trial")
-  vision               String?   // Vision text, saved when user clicks "Готово!"
-  goals                String?   // Goals text (finalized)
-  plan                 String?   // 12-week plan text (finalized)
+  
+  // Relations
+  cycles               Cycle[]
+}
+
+// ============ Progress Tracking Models ============
+
+model Cycle {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Cycle configuration
+  weekCount     Int      @default(12)           // Length of cycle (typically 12)
+  status        String   @default("active")     // active, completed, abandoned
+  
+  // Structured data from onboarding (self-contained for prompts)
+  visionText    String                        // User's vision (duplicated for self-contained)
+  goalsText     String                        // Full goals text (backup)
+  planText      String?                        // Full 12-week plan text (backup)
+  
+  // Progress tracking
+  currentWeek   Int      @default(1)           // Current week (1-12)
+  startedAt     DateTime @default(now())
+  completedAt   DateTime?
+  
+  // Relations
+  goals         Goal[]
+  weeks         Week[]
+  
+  @@index([userId])
+  @@index([status])
+}
+
+model Goal {
+  id            String   @id @default(uuid())
+  cycleId       String
+  cycle         Cycle    @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  
+  // Goal data
+  order         Int                           // Goal order (1, 2, 3)
+  description   String                        // SMART goal formulation
+  
+  // Metrics for measurement
+  metric        String?                       // How to measure (e.g., "number of workouts")
+  targetValue   String?                       // Target value (e.g., "36 in 12 weeks")
+  
+  status        String   @default("active")   // active, completed, dropped
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([cycleId])
+}
+
+model Week {
+  id            String   @id @default(uuid())
+  cycleId       String
+  cycle         Cycle    @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  
+  // Week number in cycle
+  weekNumber    Int                           // 1-12
+  
+  // Week plan (from Plan Agent)
+  focus         String?                       // Week focus
+  rhythm        String?                       // Week rhythm (text)
+  planText      String?                       // Raw plan text from agent
+  
+  // Results
+  score         Int?                          // Weekly Score in % (0-100)
+  reviewText    String?                       // Week review from bot
+  
+  status        String   @default("planned")  // planned, active, completed, skipped
+  
+  createdAt     DateTime @default(now())
+  
+  // Relations
+  actions       WeekAction[]
+  days          Day[]
+  
+  @@unique([cycleId, weekNumber])
+  @@index([cycleId])
+}
+
+model WeekAction {
+  id            String   @id @default(uuid())
+  weekId        String
+  week          Week     @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  
+  // Action data
+  order         Int                           // Order in plan (1-5)
+  description   String                        // Action text (e.g., "Run 15 km")
+  when          String?                       // When (e.g., "Mon/Wed/Fri, 19:00")
+  metric        String?                       // Metric (e.g., "distance")
+  
+  createdAt     DateTime @default(now())
+  
+  // Relations
+  completions   ActionCompletion[]
+  
+  @@index([weekId])
+}
+
+model Day {
+  id            String   @id @default(uuid())
+  weekId        String
+  week          Week     @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  
+  // Day identification
+  dayNumber     Int                           // 1-7
+  date          DateTime                      // Specific date (for timezone handling)
+  
+  // Mini Daily Plan (from Mini Daily Plan Agent)
+  dailyPlanText String?                       // Text of 3 daily actions
+  
+  // Day results
+  checkinText   String?                       // Free-form user response in evening
+  completed     Boolean  @default(false)      // true if ≥80% actions completed
+  autoCompleted Boolean  @default(false)      // Automatically marked (day passed without checkin)
+  
+  createdAt     DateTime @default(now())
+  
+  // Relations
+  completions   ActionCompletion[]
+  
+  @@unique([weekId, dayNumber])
+  @@index([weekId])
+}
+
+model ActionCompletion {
+  id            String   @id @default(uuid())
+  actionId      String
+  action        WeekAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  dayId         String?
+  day           Day?     @relation(fields: [dayId], references: [id], onDelete: SetNull)
+  
+  status        String   @default("pending")  // pending, done, skipped
+  
+  createdAt     DateTime @default(now())
+  
+  @@unique([actionId, dayId])
+  @@index([actionId])
+  @@index([dayId])
 }

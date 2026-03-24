@@ -48,7 +48,7 @@ import {
 } from '../onboarding/plan.js';
 import { generateMiniDailyPlan } from '../ai/mini_daily_plan.js';
 import { initOnboardingPlan, getPlanState } from '../state/index.js';
-import { saveUserVision, saveUserGoals, saveUserPlan, getUserVision, getUserGoals } from '../../database/client.js';
+import { saveUserVision, saveUserGoals, saveUserPlan, getUserVision, getUserGoals, getUserByTelegramId, createCycle, createGoals, updateCyclePlan, getActiveCycleForUser, createFirstWeek } from '../../database/client.js';
 import { sendChatCompletion } from '../ai/client.js';
 import { VISION_SYSTEM_PROMPT } from '../onboarding/prompts/vision.js';
 
@@ -396,6 +396,21 @@ async function handleGoalsCallback(
 
     const telegramId = String(userId);
     await saveUserGoals(telegramId, goalsText);
+    
+    // Task 13: Create Cycle + Goal[] records
+    const user = await getUserByTelegramId(telegramId);
+    if (user && user.vision) {
+      const cycle = await createCycle(user.id, user.vision, goalsText);
+      if (cycle) {
+        await createGoals(cycle.id, goalsText);
+        logger.info('Cycle and Goals created in database', { userId, cycleId: cycle.id });
+      } else {
+        logger.error('Failed to create Cycle in database', { userId });
+      }
+    } else {
+      logger.warn('Cannot create Cycle: user or vision not found', { userId, hasUser: !!user, hasVision: !!user?.vision });
+    }
+    
     await ctx.answerCbQuery('Цели сохранены!');
     await ctx.reply(
       'Отлично! Твои цели зафиксированы. Это твой фокус на ближайшие 12 недель.\n\nСледующий шаг: Plan.',
@@ -441,6 +456,19 @@ async function handlePlanCallback(
     
     // Save plan to database
     await saveUserPlan(telegramId, planText);
+    
+    // Task 13: Update Cycle.planText and create Week + Day[] × 7
+    const user = await getUserByTelegramId(telegramId);
+    if (user) {
+      const cycle = await getActiveCycleForUser(user.id);
+      if (cycle) {
+        await updateCyclePlan(cycle.id, planText);
+        await createFirstWeek(cycle.id);
+        logger.info('Cycle planText updated and first week created', { userId, cycleId: cycle.id });
+      } else {
+        logger.warn('No active cycle found for plan_accept', { userId });
+      }
+    }
     
     // Transition to STATE_ACTIVE
     await transitionOnboardingToActive(userId);
