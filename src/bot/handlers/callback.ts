@@ -86,6 +86,30 @@ export function registerCallbackHandler(bot: Telegraf<Context>) {
         return;
       }
 
+      // Validate callback data: length check and sanitize
+      const MAX_CALLBACK_LENGTH = 100;
+      if (callbackData.length > MAX_CALLBACK_LENGTH) {
+        logger.warn('Callback data too long, rejecting', {
+          userId,
+          length: callbackData.length,
+          maxLength: MAX_CALLBACK_LENGTH,
+        });
+        await ctx.answerCbQuery('Неверный формат кнопки');
+        return;
+      }
+
+      // Sanitize: only allow alphanumeric, underscore, and hyphen
+      const sanitizedCallbackData = callbackData.replace(/[^\w_-]/g, '');
+      if (sanitizedCallbackData !== callbackData) {
+        logger.warn('Callback data contained invalid characters, rejecting', {
+          userId,
+          original: callbackData.slice(0, 50),
+          sanitized: sanitizedCallbackData.slice(0, 50),
+        });
+        await ctx.answerCbQuery('Неверный формат кнопки');
+        return;
+      }
+
       // Check debounce (prevent rapid double-clicks)
       const lastCallbackTime = debounceMap.get(userId) || 0;
       const now = Date.now();
