@@ -3,27 +3,55 @@ import { logger } from '../utils/logger.js';
 import { hasDatabase } from '../config/index.js';
 
 let prisma: PrismaClient | null = null;
+let prismaConnectPromise: Promise<PrismaClient> | null = null;
 
 function createPrismaClient(): PrismaClient {
   return new PrismaClient();
 }
 
-export function getPrismaClient(): PrismaClient | null {
+/**
+ * Get Prisma client with promise-based initialization.
+ * Guarantees a single PrismaClient instance with exactly one $connect() call.
+ * Concurrent calls return the same promise.
+ */
+export async function getPrismaClientAsync(): Promise<PrismaClient | null> {
   if (!hasDatabase) {
     logger.warn('DATABASE_URL not configured - running in degraded mode');
     return null;
   }
 
-  if (!prisma) {
-    prisma = createPrismaClient();
-    prisma.$connect()
-      .then(() => logger.info('Database connected successfully'))
-      .catch((error) => {
-        logger.error('Failed to connect to database:', error);
-        prisma = null;
-      });
+  // Already connected - return immediately
+  if (prisma) {
+    return prisma;
   }
 
+  // Connection in progress - return existing promise
+  if (prismaConnectPromise) {
+    return prismaConnectPromise;
+  }
+
+  // Start new connection
+  const newClient = createPrismaClient();
+  prismaConnectPromise = newClient.$connect()
+    .then(() => {
+      prisma = newClient;
+      logger.info('Database connected successfully');
+      return prisma;
+    })
+    .catch((error) => {
+      logger.error('Failed to connect to database:', error);
+      prismaConnectPromise = null;
+      throw error;
+    });
+
+  return prismaConnectPromise;
+}
+
+/**
+ * Get Prisma client synchronously (deprecated: may return null during initial connection).
+ * For new code, prefer getPrismaClientAsync().
+ */
+export function getPrismaClient(): PrismaClient | null {
   return prisma;
 }
 
@@ -155,6 +183,7 @@ export async function disconnectDatabase() {
     await prisma.$disconnect();
     logger.info('Database disconnected');
     prisma = null;
+    prismaConnectPromise = null;
   }
 }
 

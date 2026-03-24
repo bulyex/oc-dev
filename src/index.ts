@@ -2,7 +2,7 @@ import { Telegraf } from 'telegraf';
 import { logger } from './utils/logger.js';
 import { config } from './config/index.js';
 import { setupBotHandlers } from './bot/index.js';
-import { getPrismaClient, disconnectDatabase } from './database/client.js';
+import { getPrismaClientAsync, disconnectDatabase } from './database/client.js';
 import { initializeStateManager, shutdownStateManager } from './bot/state/index.js';
 
 // Initialize bot
@@ -63,8 +63,8 @@ async function start() {
       hasRedis: !!config.redisUrl 
     });
 
-    // Test database connection (if available)
-    const prisma = getPrismaClient();
+    // Initialize database connection
+    const prisma = await getPrismaClientAsync();
     if (prisma) {
       logger.info('Database available - running in normal mode');
     } else {
