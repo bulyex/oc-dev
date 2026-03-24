@@ -162,11 +162,12 @@ model ActionCompletion {
   action        WeekAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
   dayId         String?
   day           Day?     @relation(fields: [dayId], references: [id], onDelete: SetNull)
-  
+
   status        String   @default("pending")  // pending, done, skipped
-  
+  note          String?                      // Optional user comment
+
   createdAt     DateTime @default(now())
-  
+
   @@unique([actionId, dayId])
   @@index([actionId])
   @@index([dayId])

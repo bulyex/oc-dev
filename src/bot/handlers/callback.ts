@@ -48,7 +48,7 @@ import {
 } from '../onboarding/plan.js';
 import { generateMiniDailyPlan } from '../ai/mini_daily_plan.js';
 import { initOnboardingPlan, getPlanState } from '../state/index.js';
-import { saveUserVision, saveUserGoals, saveUserPlan, getUserVision, getUserGoals, getUserByTelegramId, createCycle, createGoals, updateCyclePlan, getActiveCycleForUser, createFirstWeek } from '../../database/client.js';
+import { saveUserVision, saveUserGoals, saveUserPlan, getUserVision, getUserGoals, getUserByTelegramId, createCycle, createGoals, updateCyclePlan, getActiveCycleForUser, createFirstWeek, getActiveWeekForUser, createWeekActions, getOrCreateTodayDay, updateDayDailyPlan } from '../../database/client.js';
 import { sendChatCompletion } from '../ai/client.js';
 import { VISION_SYSTEM_PROMPT } from '../onboarding/prompts/vision.js';
 
@@ -426,6 +426,31 @@ async function handleGoalsCallback(
 }
 
 /**
+ * Parse Mini Daily Plan output into action texts
+ * Simple parsing: split by newlines, strip bullet markers, take first 3
+ */
+function parseMiniDailyPlan(planText: string): Array<{ actionText: string; order: number }> {
+  const lines = planText.split('\n');
+  const actions: Array<{ actionText: string; order: number }> = [];
+
+  for (const line of lines) {
+    if (actions.length >= 3) break;
+
+    // Strip bullet markers and whitespace
+    const cleaned = line
+      .replace(/^[•\-\*]\s*/, '')
+      .replace(/^\d+\.\s*/, '')
+      .trim();
+
+    if (cleaned.length > 0) {
+      actions.push({ actionText: cleaned, order: actions.length + 1 });
+    }
+  }
+
+  return actions;
+}
+
+/**
  * Handle Plan phase callbacks (STATE_ONBOARDING PLAN substate)
  *
  * Handles:
@@ -453,10 +478,10 @@ async function handlePlanCallback(
     }
 
     const telegramId = String(userId);
-    
+
     // Save plan to database
     await saveUserPlan(telegramId, planText);
-    
+
     // Task 13: Update Cycle.planText and create Week + Day[] × 7
     const user = await getUserByTelegramId(telegramId);
     if (user) {
@@ -469,14 +494,14 @@ async function handlePlanCallback(
         logger.warn('No active cycle found for plan_accept', { userId });
       }
     }
-    
+
     // Transition to STATE_ACTIVE
     await transitionOnboardingToActive(userId);
-    
+
     // Load vision and goals for mini daily plan
     const vision = await getUserVision(telegramId);
     const goals = await getUserGoals(telegramId);
-    
+
     // Generate mini daily plan
     let dailyPlan: string;
     if (vision && goals && planText) {
@@ -484,7 +509,35 @@ async function handlePlanCallback(
     } else {
       dailyPlan = '• Выполнить первое действие из плана\n• Продвинуться к ближайшей цели\n• Подвести итоги дня вечером';
     }
-    
+
+    // Task 14: Create WeekAction[] records and save dailyPlan to Day
+    const weekUser = await getUserByTelegramId(telegramId);
+    if (weekUser) {
+      const activeWeek = await getActiveWeekForUser(weekUser.id);
+      if (activeWeek) {
+        // Parse daily plan into actions
+        const parsedActions = parseMiniDailyPlan(dailyPlan);
+
+        if (parsedActions.length > 0) {
+          // Create WeekAction[] records
+          await createWeekActions(activeWeek.id, parsedActions);
+          logger.info('WeekActions created from Mini Daily Plan', {
+            userId,
+            weekId: activeWeek.id,
+            actionCount: parsedActions.length,
+          });
+        }
+
+        // Get or create today's Day
+        const todayDay = await getOrCreateTodayDay(activeWeek.id);
+        if (todayDay) {
+          // Save dailyPlan to Day.dailyPlanText
+          await updateDayDailyPlan(todayDay.id, dailyPlan);
+          logger.info('Day dailyPlanText saved', { userId, dayId: todayDay.id });
+        }
+      }
+    }
+
     // Acknowledge callback (may fail if query is stale — that's OK, reply goes through)
     await ctx.answerCbQuery('План сохранён!').catch(() => {});
     await ctx.reply(
