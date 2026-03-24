@@ -1,5 +1,6 @@
 import { getPrismaClient } from '../client.js';
 import { logger } from '../../utils/logger.js';
+import { getMoscowDateForDayOffset } from '../../utils/datetime.js';
 
 /**
  * Today's status for formatting responses
@@ -42,12 +43,8 @@ export async function getTodayStatus(telegramId: string): Promise<TodayStatus | 
 
     if (!activeWeek) return { total: 0, done: 0, pending: [], dayId: null };
 
-    // Calculate today's date in Moscow timezone
-    const now = new Date();
-    const moscowOffset = 3 * 60 * 60 * 1000;
-    const moscowNow = new Date(now.getTime() + moscowOffset);
-    const todayDate = new Date(moscowNow);
-    todayDate.setUTCHours(0, 0, 0, 0);
+    // Calculate today's date in Moscow timezone using luxon
+    const todayDate = getMoscowDateForDayOffset(0);
 
     // Find today's day
     const todayDay = await client.day.findFirst({
@@ -152,12 +149,8 @@ export async function getTodayActionsWithCompletions(
       return [];
     }
 
-    // Calculate today's date in Moscow timezone
-    const now = new Date();
-    const moscowOffset = 3 * 60 * 60 * 1000;
-    const moscowNow = new Date(now.getTime() + moscowOffset);
-    const todayDate = new Date(moscowNow);
-    todayDate.setUTCHours(0, 0, 0, 0);
+    // Calculate today's date in Moscow timezone using luxon
+    const todayDate = getMoscowDateForDayOffset(0);
 
     // Find today's day
     const todayDay = await client.day.findFirst({

@@ -1,5 +1,6 @@
 import { getPrismaClient } from '../client.js';
 import { logger } from '../../utils/logger.js';
+import { getMoscowDateForDayOffset, getMoscowDayOfWeek } from '../../utils/datetime.js';
 
 /**
  * Create first Week (week 1) with 7 Days
@@ -18,18 +19,9 @@ export async function createFirstWeek(cycleId: string): Promise<void> {
       },
     });
 
-    // Create 7 Days
-    // Use Europe/Moscow timezone for date calculation
-    const now = new Date();
-    const moscowOffset = 3 * 60; // Moscow is UTC+3
-
+    // Create 7 Days using luxon for Moscow timezone
     for (let dayNumber = 1; dayNumber <= 7; dayNumber++) {
-      // Calculate date for this day
-      const dayDate = new Date(now);
-      dayDate.setUTCDate(dayDate.getUTCDate() + (dayNumber - 1));
-      // Adjust for Moscow timezone (store date in Moscow time)
-      dayDate.setUTCHours(0, 0, 0, 0); // Start of day in UTC
-      dayDate.setUTCMinutes(dayDate.getUTCMinutes() + moscowOffset);
+      const dayDate = getMoscowDateForDayOffset(dayNumber - 1);
 
       await client.day.create({
         data: {
@@ -75,7 +67,7 @@ export async function getActiveWeekForUser(userId: string): Promise<{ id: string
 
 /**
  * Get or create today's Day for a week
- * Timezone: Europe/Moscow (UTC+3)
+ * Timezone: Europe/Moscow
  */
 export async function getOrCreateTodayDay(
   weekId: string
@@ -83,12 +75,8 @@ export async function getOrCreateTodayDay(
   const client = getPrismaClient();
   if (!client) return null;
   try {
-    // Calculate today's date in Moscow timezone
-    const now = new Date();
-    const moscowOffset = 3 * 60 * 60 * 1000; // Moscow is UTC+3 in milliseconds
-    const moscowNow = new Date(now.getTime() + moscowOffset);
-    const todayDate = new Date(moscowNow);
-    todayDate.setUTCHours(0, 0, 0, 0);
+    // Calculate today's date in Moscow timezone using luxon
+    const todayDate = getMoscowDateForDayOffset(0);
 
     // Find today's day
     const existingDay = await client.day.findFirst({
@@ -117,10 +105,8 @@ export async function getOrCreateTodayDay(
       return null;
     }
 
-    // Calculate dayNumber based on cycle start (day 1 = first day of week 1)
-    // For simplicity: use current day of week (1-7)
-    const dayOfWeek = moscowNow.getUTCDay();
-    const dayNumber = dayOfWeek === 0 ? 7 : dayOfWeek; // Convert Sunday (0) to 7
+    // Calculate dayNumber: use current day of week (1-7)
+    const dayNumber = getMoscowDayOfWeek();
 
     // Create the day
     const newDay = await client.day.create({
