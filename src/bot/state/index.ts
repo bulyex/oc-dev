@@ -2,6 +2,7 @@ import { logger } from '../../utils/logger.js';
 import { StateManager } from './manager.js';
 import { RedisStateManager } from './redis.js';
 import { InMemoryStateManager } from './memory.js';
+import { syncFSMState } from '../../database/client.js';
 import {
   UserState,
   UserFSMState,
@@ -100,6 +101,12 @@ export async function setFSMState(
   }
   
   await manager.set(userId, state);
+  
+  // Sync FSM state to database (fire-and-forget with logging)
+  syncFSMState(String(userId), fsmState).catch((error) => {
+    logger.error('Failed to sync FSM state to database', { userId, fsmState, error });
+  });
+  
   logger.debug('FSM state set', { userId, fsmState });
 }
 
@@ -163,6 +170,11 @@ export async function transitionOnboardingToActive(userId: number): Promise<void
   } else {
     await setFSMState(userId, UserFSMState.STATE_ACTIVE);
   }
+
+  // Sync FSM state to database (fire-and-forget with logging)
+  syncFSMState(String(userId), UserFSMState.STATE_ACTIVE).catch((error) => {
+    logger.error('Failed to sync FSM state to database', { userId, fsmState: UserFSMState.STATE_ACTIVE, error });
+  });
 
   logger.info('Transitioned to ACTIVE state', { userId });
 }
