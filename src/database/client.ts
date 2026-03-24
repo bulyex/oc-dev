@@ -437,3 +437,411 @@ export async function getUserStatus(telegramId: string): Promise<{
     return null;
   }
 }
+
+// ============================================================
+// TASK 14: Execution Tracker Agent DB Functions
+// ============================================================
+
+/**
+ * Create WeekAction records for a week (used when generating Mini Daily Plan)
+ */
+export async function createWeekActions(
+  weekId: string,
+  actions: Array<{ actionText: string; order: number }>
+): Promise<Array<{ id: string; actionText: string; order: number }> | null> {
+  const client = getPrismaClient();
+  if (!client) return null;
+  try {
+    const created: Array<{ id: string; actionText: string; order: number }> = [];
+
+    for (const action of actions) {
+      const weekAction = await client.weekAction.create({
+        data: {
+          weekId,
+          description: action.actionText,
+          order: action.order,
+        },
+      });
+      created.push({
+        id: weekAction.id,
+        actionText: weekAction.description,
+        order: weekAction.order,
+      });
+    }
+
+    logger.info('WeekActions created', { weekId, count: created.length });
+    return created;
+  } catch (error) {
+    logger.error('Failed to create WeekActions', { weekId, error });
+    return null;
+  }
+}
+
+/**
+ * Get or create today's Day for a week
+ * Timezone: Europe/Moscow (UTC+3)
+ */
+export async function getOrCreateTodayDay(weekId: string): Promise<{ id: string; dayNumber: number } | null> {
+  const client = getPrismaClient();
+  if (!client) return null;
+  try {
+    // Calculate today's date in Moscow timezone
+    const now = new Date();
+    const moscowOffset = 3 * 60 * 60 * 1000; // Moscow is UTC+3 in milliseconds
+    const moscowNow = new Date(now.getTime() + moscowOffset);
+    const todayDate = new Date(moscowNow);
+    todayDate.setUTCHours(0, 0, 0, 0);
+
+    // Find today's day
+    const existingDay = await client.day.findFirst({
+      where: {
+        weekId,
+        date: {
+          gte: todayDate,
+          lt: new Date(todayDate.getTime() + 24 * 60 * 60 * 1000),
+        },
+      },
+      select: { id: true, dayNumber: true },
+    });
+
+    if (existingDay) {
+      return existingDay;
+    }
+
+    // Find the week to get cycle info
+    const week = await client.week.findUnique({
+      where: { id: weekId },
+      select: { cycleId: true, weekNumber: true },
+    });
+
+    if (!week) {
+      logger.error('Week not found for getOrCreateTodayDay', { weekId });
+      return null;
+    }
+
+    // Calculate dayNumber based on cycle start (day 1 = first day of week 1)
+    // For simplicity: use current day of week (1-7)
+    const dayOfWeek = moscowNow.getUTCDay();
+    const dayNumber = dayOfWeek === 0 ? 7 : dayOfWeek; // Convert Sunday (0) to 7
+
+    // Create the day
+    const newDay = await client.day.create({
+      data: {
+        weekId,
+        dayNumber,
+        date: todayDate,
+      },
+    });
+
+    logger.info('Today Day created', { weekId, dayId: newDay.id, dayNumber });
+    return { id: newDay.id, dayNumber: newDay.dayNumber };
+  } catch (error) {
+    logger.error('Failed to get or create today day', { weekId, error });
+    return null;
+  }
+}
+
+/**
+ * Update dailyPlanText for a day
+ */
+export async function updateDayDailyPlan(dayId: string, dailyPlan: string): Promise<boolean> {
+  const client = getPrismaClient();
+  if (!client) return false;
+  try {
+    await client.day.update({
+      where: { id: dayId },
+      data: { dailyPlanText: dailyPlan },
+    });
+    logger.info('Day dailyPlanText updated', { dayId, planLength: dailyPlan.length });
+    return true;
+  } catch (error) {
+    logger.error('Failed to update day dailyPlan', { dayId, error });
+    return false;
+  }
+}
+
+/**
+ * Today's action with completion status
+ */
+export interface TodayAction {
+  actionId: string;
+  actionText: string;
+  order: number;
+  status: 'pending' | 'done' | 'skipped';
+  completionNote?: string;
+}
+
+/**
+ * Get today's actions with their completion status
+ */
+export async function getTodayActionsWithCompletions(telegramId: string): Promise<TodayAction[] | null> {
+  const client = getPrismaClient();
+  if (!client) return null;
+  try {
+    // Get user
+    const user = await client.user.findUnique({
+      where: { telegramId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      logger.warn('User not found for getTodayActionsWithCompletions', { telegramId });
+      return [];
+    }
+
+    // Get active cycle
+    const activeCycle = await client.cycle.findFirst({
+      where: { userId: user.id, status: 'active' },
+      select: { id: true },
+    });
+
+    if (!activeCycle) {
+      logger.info('No active cycle for user', { telegramId });
+      return [];
+    }
+
+    // Get active week
+    const activeWeek = await client.week.findFirst({
+      where: { cycleId: activeCycle.id, status: 'active' },
+      select: { id: true },
+    });
+
+    if (!activeWeek) {
+      logger.info('No active week for user', { telegramId });
+      return [];
+    }
+
+    // Calculate today's date in Moscow timezone
+    const now = new Date();
+    const moscowOffset = 3 * 60 * 60 * 1000;
+    const moscowNow = new Date(now.getTime() + moscowOffset);
+    const todayDate = new Date(moscowNow);
+    todayDate.setUTCHours(0, 0, 0, 0);
+
+    // Find today's day
+    const todayDay = await client.day.findFirst({
+      where: {
+        weekId: activeWeek.id,
+        date: {
+          gte: todayDate,
+          lt: new Date(todayDate.getTime() + 24 * 60 * 60 * 1000),
+        },
+      },
+      select: { id: true },
+    });
+
+    // Get all week actions
+    const weekActions = await client.weekAction.findMany({
+      where: { weekId: activeWeek.id },
+      select: { id: true, description: true, order: true },
+      orderBy: { order: 'asc' },
+    });
+
+    if (weekActions.length === 0) {
+      return [];
+    }
+
+    // Get completions for today (if day exists)
+    const completions = todayDay
+      ? await client.actionCompletion.findMany({
+          where: { dayId: todayDay.id },
+          select: { actionId: true, status: true, note: true },
+        })
+      : [];
+
+    // Build completions map
+    const completionsMap = new Map<string, { status: string; note?: string }>();
+    for (const c of completions) {
+      completionsMap.set(c.actionId, { status: c.status, note: c.note || undefined });
+    }
+
+    // Merge actions with completions
+    const todayActions: TodayAction[] = weekActions.map((action) => {
+      const completion = completionsMap.get(action.id);
+      return {
+        actionId: action.id,
+        actionText: action.description,
+        order: action.order,
+        status: (completion?.status as 'pending' | 'done' | 'skipped') || 'pending',
+        completionNote: completion?.note,
+      };
+    });
+
+    return todayActions;
+  } catch (error) {
+    logger.error('Failed to get today actions with completions', { telegramId, error });
+    return null;
+  }
+}
+
+/**
+ * Mark action as done (create or update ActionCompletion)
+ */
+export async function markActionDone(
+  dayId: string,
+  actionId: string,
+  note?: string
+): Promise<boolean> {
+  const client = getPrismaClient();
+  if (!client) return false;
+  try {
+    // Check if completion exists
+    const existing = await client.actionCompletion.findUnique({
+      where: {
+        actionId_dayId: { actionId, dayId },
+      },
+    });
+
+    if (existing) {
+      // Update existing
+      await client.actionCompletion.update({
+        where: { id: existing.id },
+        data: { status: 'done', note },
+      });
+      logger.info('ActionCompletion updated to done', { actionId, dayId });
+    } else {
+      // Create new
+      await client.actionCompletion.create({
+        data: {
+          actionId,
+          dayId,
+          status: 'done',
+          note,
+        },
+      });
+      logger.info('ActionCompletion created as done', { actionId, dayId });
+    }
+
+    return true;
+  } catch (error) {
+    logger.error('Failed to mark action done', { actionId, dayId, error });
+    return false;
+  }
+}
+
+/**
+ * Today's status for formatting responses
+ */
+export interface TodayStatus {
+  total: number;
+  done: number;
+  pending: Array<{ actionId: string; actionText: string; order: number }>;
+  dayId: string | null;
+}
+
+/**
+ * Get today's status summary
+ */
+export async function getTodayStatus(telegramId: string): Promise<TodayStatus | null> {
+  const client = getPrismaClient();
+  if (!client) return null;
+  try {
+    // Get user
+    const user = await client.user.findUnique({
+      where: { telegramId },
+      select: { id: true },
+    });
+
+    if (!user) return null;
+
+    // Get active cycle
+    const activeCycle = await client.cycle.findFirst({
+      where: { userId: user.id, status: 'active' },
+      select: { id: true },
+    });
+
+    if (!activeCycle) return { total: 0, done: 0, pending: [], dayId: null };
+
+    // Get active week
+    const activeWeek = await client.week.findFirst({
+      where: { cycleId: activeCycle.id, status: 'active' },
+      select: { id: true },
+    });
+
+    if (!activeWeek) return { total: 0, done: 0, pending: [], dayId: null };
+
+    // Calculate today's date in Moscow timezone
+    const now = new Date();
+    const moscowOffset = 3 * 60 * 60 * 1000;
+    const moscowNow = new Date(now.getTime() + moscowOffset);
+    const todayDate = new Date(moscowNow);
+    todayDate.setUTCHours(0, 0, 0, 0);
+
+    // Find today's day
+    const todayDay = await client.day.findFirst({
+      where: {
+        weekId: activeWeek.id,
+        date: {
+          gte: todayDate,
+          lt: new Date(todayDate.getTime() + 24 * 60 * 60 * 1000),
+        },
+      },
+      select: { id: true },
+    });
+
+    // Get all week actions
+    const weekActions = await client.weekAction.findMany({
+      where: { weekId: activeWeek.id },
+      select: { id: true, description: true, order: true },
+      orderBy: { order: 'asc' },
+    });
+
+    if (weekActions.length === 0) {
+      return { total: 0, done: 0, pending: [], dayId: todayDay?.id || null };
+    }
+
+    // Get completions for today
+    const completions = todayDay
+      ? await client.actionCompletion.findMany({
+          where: { dayId: todayDay.id, status: 'done' },
+          select: { actionId: true },
+        })
+      : [];
+
+    const doneSet = new Set(completions.map((c) => c.actionId));
+
+    const pending = weekActions
+      .filter((a) => !doneSet.has(a.id))
+      .map((a) => ({
+        actionId: a.id,
+        actionText: a.description,
+        order: a.order,
+      }));
+
+    return {
+      total: weekActions.length,
+      done: doneSet.size,
+      pending,
+      dayId: todayDay?.id || null,
+    };
+  } catch (error) {
+    logger.error('Failed to get today status', { telegramId, error });
+    return null;
+  }
+}
+
+/**
+ * Get active week for user (helper for plan_accept)
+ */
+export async function getActiveWeekForUser(userId: string): Promise<{ id: string } | null> {
+  const client = getPrismaClient();
+  if (!client) return null;
+  try {
+    const activeCycle = await client.cycle.findFirst({
+      where: { userId, status: 'active' },
+      select: { id: true },
+    });
+
+    if (!activeCycle) return null;
+
+    const activeWeek = await client.week.findFirst({
+      where: { cycleId: activeCycle.id, status: 'active' },
+      select: { id: true },
+    });
+
+    return activeWeek;
+  } catch (error) {
+    logger.error('Failed to get active week for user', { userId, error });
+    return null;
+  }
+}
