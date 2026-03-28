@@ -827,6 +827,21 @@ export async function clearPlanState(userId: number): Promise<void> {
   logger.info('Plan state cleared', { userId });
 }
 
+// ============================================================
+// ONBOARDING CLEANUP
+// ============================================================
+
+/**
+ * Clear all onboarding chat histories
+ * Called after plan_accept to clean up temporary data
+ */
+export async function clearOnboardingChatHistories(userId: number): Promise<void> {
+  await clearVisionState(userId);
+  await clearGoalsState(userId);
+  await clearPlanState(userId);
+  logger.info('All onboarding chat histories cleared', { userId });
+}
+
 // Re-export types
 export { UserFSMState, OnboardingSubstate } from './types.js';
 export type { OnboardingMessageType, HelloMessageType, DecisionMessageType, UserState, ChatMessageHistory } from './types.js';

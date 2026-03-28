@@ -20,6 +20,7 @@ import {
   setDraftProposed,
   addVisionChatMessage,
   saveVision,
+  clearOnboardingChatHistories,
 } from '../state/index.js';
 import { UserFSMState, OnboardingSubstate } from '../state/types.js';
 import {
@@ -534,6 +535,9 @@ async function handlePlanCallback(
         logger.warn('No active cycle found for plan_accept', { userId });
       }
     }
+
+    // Clear all onboarding chat histories before transitioning to ACTIVE
+    await clearOnboardingChatHistories(userId);
 
     // Transition to STATE_ACTIVE
     await transitionOnboardingToActive(userId);
