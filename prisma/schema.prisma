@@ -41,7 +41,7 @@ model Cycle {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   // Cycle configuration
-  weekCount     Int      @default(12)           // Length of cycle (typically 12)
+  cycleLengthInWeeks Int @default(12)         // Length of cycle (typically 12)
   status        String   @default("active")     // active, completed, abandoned
   
   // Structured data from onboarding (self-contained for prompts)
@@ -53,6 +53,12 @@ model Cycle {
   currentWeek   Int      @default(1)           // Current week (1-12)
   startedAt     DateTime @default(now())
   completedAt   DateTime?
+
+  // Counter fields (for cycle progression)
+  activeStartedAt DateTime?                   // Timestamp when cycle transitioned to ACTIVE
+  dayCount        Int      @default(0)         // Current day counter (0-based)
+  weekCount Int         @default(0)         // Week advancement counter (0-based, incremented every 7 days from activeStartedAt)
+  cycleCount      Int      @default(0)         // Current cycle number (0 = first cycle)
   
   // Relations
   goals         Goal[]

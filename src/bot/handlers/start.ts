@@ -106,7 +106,7 @@ export function registerStartHandler(bot: Telegraf<Context>) {
       if (status.hasCycle) {
         lines.push(`Цикл: активен`);
         lines.push(`Текущая неделя: ${status.currentWeek || 1}`);
-        lines.push(`Недель создано: ${status.weekCount}`);
+        lines.push(`Недель создано: ${status.cycleLengthInWeeks}`);
       } else {
         lines.push(`Цикл: не создан`);
       }
