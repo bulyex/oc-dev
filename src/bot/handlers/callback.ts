@@ -16,6 +16,7 @@ import {
   getState,
   getVisionState,
   clearVisionState,
+  getStateManager,
   setExampleShown,
   setDraftProposed,
   addVisionChatMessage,
@@ -329,8 +330,16 @@ async function handleVisionCallback(
   const telegramId = String(userId);
   
   if (callbackData === 'vision_reset') {
-    // Clear vision state and show welcome message
+    // Clear vision state (chat, flags, counters) and show welcome message.
+    // state.vision is cleared directly here (not in clearVisionState, which
+    // is shared with clearOnboardingChatHistories that must preserve it).
+    // Vision is already persisted to DB via saveUserVision, so no data loss.
     await clearVisionState(userId);
+    const state = await getState(userId);
+    if (state) {
+      state.vision = undefined;
+      await getStateManager().set(userId, state);
+    }
     await ctx.answerCbQuery();
     await ctx.reply(VISION_WELCOME_MESSAGE, {
       reply_markup: createVisionKeyboard({ showDone: false })
