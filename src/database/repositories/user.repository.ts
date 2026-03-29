@@ -197,7 +197,7 @@ export async function getUserStatus(
 ): Promise<{
   fsmState: string;
   hasCycle: boolean;
-  weekCount: number;
+  cycleLengthInWeeks: number;
   currentWeek: number | null;
   lastUpdate: Date | null;
 } | null> {
@@ -228,7 +228,7 @@ export async function getUserStatus(
     return {
       fsmState: user.fsmState,
       hasCycle: !!activeCycle,
-      weekCount: activeCycle?.weeks.length || 0,
+      cycleLengthInWeeks: activeCycle?.weeks.length || 0,
       currentWeek: activeCycle?.currentWeek || null,
       lastUpdate: user.updatedAt,
     };

@@ -93,6 +93,7 @@ export {
   getActiveCycleForUser,
   updateCyclePlan,
   completeCycle,
+  updateCycleCounters,
 } from './repositories/cycle.repository.js';
 
 // Week repository

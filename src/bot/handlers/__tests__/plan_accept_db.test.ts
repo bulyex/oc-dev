@@ -113,7 +113,7 @@ describe('plan_accept DB integration', () => {
       CREATE TABLE IF NOT EXISTS "Cycle" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "userId" TEXT NOT NULL,
-        "weekCount" INTEGER NOT NULL DEFAULT 12,
+        "cycleLengthInWeeks" INTEGER NOT NULL DEFAULT 12,
         "status" TEXT NOT NULL DEFAULT 'active',
         "visionText" TEXT NOT NULL,
         "goalsText" TEXT NOT NULL,
@@ -121,6 +121,10 @@ describe('plan_accept DB integration', () => {
         "currentWeek" INTEGER NOT NULL DEFAULT 1,
         "startedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "completedAt" DATETIME,
+        "dayCount" INTEGER NOT NULL DEFAULT 0,
+        "activeStartedAt" DATETIME,
+        "weekCount" INTEGER NOT NULL DEFAULT 0,
+        "cycleCount" INTEGER NOT NULL DEFAULT 0,
         CONSTRAINT "Cycle_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE
       );
       CREATE INDEX IF NOT EXISTS "Cycle_userId_idx" ON "Cycle"("userId");
@@ -245,7 +249,7 @@ describe('plan_accept DB integration', () => {
         visionText: TEST_VISION,
         goalsText: TEST_GOALS_TEXT,
         status: 'active',
-        weekCount: 12,
+        cycleLengthInWeeks: 12,
         currentWeek: 1,
       },
     });
@@ -335,7 +339,7 @@ describe('plan_accept DB integration', () => {
     expect(dbCycle!.goalsText).toBe(TEST_GOALS_TEXT);
     expect(dbCycle!.planText).toBe(TEST_PLAN_TEXT);
     expect(dbCycle!.status).toBe('active');
-    expect(dbCycle!.weekCount).toBe(12);
+    expect(dbCycle!.cycleLengthInWeeks).toBe(12);
     expect(dbCycle!.currentWeek).toBe(1);
 
     // 2. Goals[] created and linked to Cycle

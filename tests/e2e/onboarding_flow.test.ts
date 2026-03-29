@@ -70,7 +70,7 @@ function createTestPrisma(): PrismaClient {
 
 async function createSchema(p: PrismaClient): Promise<void> {
   await p.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "User" ("id" TEXT NOT NULL PRIMARY KEY, "telegramId" TEXT NOT NULL UNIQUE, "firstName" TEXT, "lastName" TEXT, "username" TEXT, "fsmState" TEXT NOT NULL DEFAULT 'hello', "vision" TEXT, "goals" TEXT, "plan" TEXT, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
-  await p.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Cycle" ("id" TEXT NOT NULL PRIMARY KEY, "userId" TEXT NOT NULL, "weekCount" INTEGER NOT NULL DEFAULT 12, "status" TEXT NOT NULL DEFAULT 'active', "visionText" TEXT NOT NULL, "goalsText" TEXT NOT NULL, "planText" TEXT, "currentWeek" INTEGER NOT NULL DEFAULT 1, "startedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "completedAt" DATETIME, FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE)`);
+  await p.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Cycle" ("id" TEXT NOT NULL PRIMARY KEY, "userId" TEXT NOT NULL, "cycleLengthInWeeks" INTEGER NOT NULL DEFAULT 12, "status" TEXT NOT NULL DEFAULT 'active', "visionText" TEXT NOT NULL, "goalsText" TEXT NOT NULL, "planText" TEXT, "currentWeek" INTEGER NOT NULL DEFAULT 1, "startedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "completedAt" DATETIME, "dayCount" INTEGER NOT NULL DEFAULT 0, "activeStartedAt" DATETIME, "weekCount" INTEGER NOT NULL DEFAULT 0, "cycleCount" INTEGER NOT NULL DEFAULT 0, FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE)`);
   await p.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Goal" ("id" TEXT NOT NULL PRIMARY KEY, "cycleId" TEXT NOT NULL, "order" INTEGER NOT NULL, "description" TEXT NOT NULL, "metric" TEXT, "targetValue" TEXT, "status" TEXT NOT NULL DEFAULT 'active', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY ("cycleId") REFERENCES "Cycle"("id") ON DELETE CASCADE)`);
   await p.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Week" ("id" TEXT NOT NULL PRIMARY KEY, "cycleId" TEXT NOT NULL, "weekNumber" INTEGER NOT NULL, "focus" TEXT, "rhythm" TEXT, "planText" TEXT, "score" INTEGER, "reviewText" TEXT, "status" TEXT NOT NULL DEFAULT 'planned', "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY ("cycleId") REFERENCES "Cycle"("id") ON DELETE CASCADE, UNIQUE("cycleId", "weekNumber"))`);
   await p.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "WeekAction" ("id" TEXT NOT NULL PRIMARY KEY, "weekId" TEXT NOT NULL, "order" INTEGER NOT NULL, "description" TEXT NOT NULL, "when" TEXT, "metric" TEXT, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY ("weekId") REFERENCES "Week"("id") ON DELETE CASCADE)`);
@@ -116,7 +116,7 @@ async function saveGoalsToDb(goals: string): Promise<void> {
 // Helper: create Cycle + Goals
 async function createCycleAndGoals(userId: string, vision: string, goalsText: string) {
   const cycle = await prisma.cycle.create({
-    data: { userId, visionText: vision, goalsText, status: 'active', weekCount: 12, currentWeek: 1 }
+    data: { userId, visionText: vision, goalsText, status: 'active', cycleLengthInWeeks: 12, currentWeek: 1 }
   });
   
   const parsedGoals = parseGoalsText(goalsText);

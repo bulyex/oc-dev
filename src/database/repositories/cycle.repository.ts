@@ -18,7 +18,7 @@ export async function createCycle(
         visionText,
         goalsText,
         status: 'active',
-        weekCount: 12,
+        cycleLengthInWeeks: 12,
         currentWeek: 1,
       },
     });
@@ -82,6 +82,45 @@ export async function completeCycle(cycleId: string): Promise<boolean> {
     return true;
   } catch (error) {
     logger.error('Failed to complete cycle', { cycleId, error });
+    return false;
+  }
+}
+
+/**
+ * Atomically update cycle counter fields.
+ * All fields are optional; only provided fields are updated.
+ */
+export async function updateCycleCounters(
+  cycleId: string,
+  counters: {
+    dayCount?: number;
+    cycleLengthInWeeks?: number;
+    weekCount?: number;
+    cycleCount?: number;
+    activeStartedAt?: Date | null;
+  }
+): Promise<boolean> {
+  const client = getPrismaClient();
+  if (!client) return false;
+
+  const updateData: Record<string, unknown> = {};
+  if (counters.dayCount !== undefined) updateData.dayCount = counters.dayCount;
+  if (counters.cycleLengthInWeeks !== undefined) updateData.cycleLengthInWeeks = counters.cycleLengthInWeeks;
+  if (counters.weekCount !== undefined) updateData.weekCount = counters.weekCount;
+  if (counters.cycleCount !== undefined) updateData.cycleCount = counters.cycleCount;
+  if (counters.activeStartedAt !== undefined) updateData.activeStartedAt = counters.activeStartedAt;
+
+  if (Object.keys(updateData).length === 0) return true;
+
+  try {
+    await client.cycle.update({
+      where: { id: cycleId },
+      data: updateData,
+    });
+    logger.info('Cycle counters updated', { cycleId, counters });
+    return true;
+  } catch (error) {
+    logger.error('Failed to update cycle counters', { cycleId, error });
     return false;
   }
 }

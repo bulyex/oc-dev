@@ -4,6 +4,7 @@ import { config } from './config/index.js';
 import { setupBotHandlers } from './bot/index.js';
 import { getPrismaClientAsync, disconnectDatabase } from './database/client.js';
 import { initializeStateManager, shutdownStateManager } from './bot/state/index.js';
+import { getScheduler } from './scheduler/index.js';
 
 // Initialize bot
 const bot = new Telegraf(config.telegramBotToken);
@@ -30,6 +31,9 @@ async function gracefulShutdown(signal: string) {
 
     // Shutdown state manager
     await shutdownStateManager();
+
+    // Stop scheduler
+    getScheduler().stop();
 
     // Disconnect database
     await disconnectDatabase();
@@ -70,6 +74,10 @@ async function start() {
     } else {
       logger.warn('Database not available - running in degraded mode');
     }
+
+    // Start scheduler
+    const scheduler = getScheduler();
+    scheduler.start();
 
     // Start bot
     logger.info('Starting bot...');
